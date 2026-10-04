@@ -10,6 +10,8 @@ Open-source AI development environment by **Compiwer AI** — *Building AI For E
 
 > Build software with local models, Hugging Face models, and configurable cloud/API models — through one model-agnostic agent.
 
+**Docs & blog:** https://compiwerai.github.io/mtrini-workspace (enable Pages on first deploy, see below).
+
 - Local AI (llama.cpp / Ollama / vLLM / any OpenAI-compatible server)
 - Hugging Face browser, auth, downloads
 - API providers: OpenAI, Anthropic, Gemini, OpenRouter, Mistral, DeepSeek, Groq,

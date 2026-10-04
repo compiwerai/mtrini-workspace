@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Docs — Mtrini Workspace</title>
+<meta name="description" content="Mtrini Workspace documentation: quickstart, providers, local models, thinking mode, MCP, images, skills and API." />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" type="image/png" href="logo.png" />
+</head>
+<body>
+<div class="wrap">
+  <nav class="top">
+    <a class="brand" href="index.html"><img src="logo.png" alt="" width="26" height="26" />COMPIWER AI</a>
+    <a class="link" href="index.html">Home</a>
+    <a class="link on" href="docs.html">Docs</a>
+    <a class="link" href="blog.html">Blog</a>
+    <a class="link" href="changelog.html">Changelog</a>
+    <span class="sp"></span>
+    <a class="link" href="https://github.com/compiwerai/mtrini-workspace">GitHub</a>
+  </nav>
+  <div class="docs">
+    <aside class="glass">
+      <input id="q" placeholder="Filter topics…" aria-label="Filter topics" />
+      <a href="#quickstart">Quickstart</a>
+      <a href="#providers">Providers</a>
+      <a href="#local">Local models</a>
+      <a href="#thinking">Thinking mode</a>
+      <a href="#threads">Threads & folders</a>
+      <a href="#mcp">MCP servers</a>
+      <a href="#images">Images</a>
+      <a href="#skills">Skills</a>
+      <a href="#api">API</a>
+      <a href="#faq">FAQ</a>
+    </aside>
+    <article class="glass" id="content">
+      <h2 id="quickstart">Quickstart</h2>
+      <p><strong>Option A — Setup (Windows):</strong> download <code>MtriniWorkspace-Setup-0.6.1.exe</code> from <a href="https://github.com/compiwerai/mtrini-workspace/releases">releases</a> and run it.</p>
+      <p><strong>Option B — source:</strong></p>
+      <pre><code>pip install -r backend/requirements.txt
+npm install --prefix frontend
+python -m uvicorn mtrini.main:app --app-dir backend --port 8787
+npm run dev --prefix frontend   # http://localhost:5173</code></pre>
+      <p>Pick a working folder, configure a provider in Settings, start a thread.</p>
+
+      <h2 id="providers">Providers</h2>
+      <p>Settings → Providers covers 24 backends: local servers, Ollama, LM Studio, OpenAI, Anthropic, Gemini, OpenRouter, Mistral, DeepSeek, Groq, Together, Fireworks, xAI, Cohere, Cerebras, DeepInfra, Nebius, SambaNova, Novita, SiliconFlow, Azure OpenAI (deployment = model), Hugging Face, SD WebUI and custom OpenAI-compatible endpoints. Keys live in your OS keychain — never in config files.</p>
+
+      <h2 id="local">Local models</h2>
+      <ol>
+        <li>Run <code>llama-server -m model.gguf --port 8000</code>, or Ollama / LM Studio.</li>
+        <li>Settings → Providers → <code>local</code> (or the Ollama/LM Studio preset).</li>
+        <li>Pick the model in the composer. Check reachability via <code>/api/local/endpoint</code>.</li>
+      </ol>
+      <p>GGUF files can be fetched from Hugging Face inside Models search, one file at a time.</p>
+
+      <h2 id="thinking">Thinking mode</h2>
+      <p>The composer selector (Off/Low/Medium/High/XHigh/Max) maps to native reasoning controls: OpenAI + Azure <code>reasoning_effort</code>, Anthropic <code>thinking</code> budgets (4K–32K), Gemini <code>thinkingBudget</code> — and deepens the agent tool loop from 12 to 60 steps. Providers without a native control ignore it safely.</p>
+
+      <h2 id="threads">Threads & folders</h2>
+      <p>Every chat is a persisted thread with <strong>its own working folder</strong> (composer folder chip to move it). Rename, delete, and reopen threads from the sidebar; the agent, terminal, Git panel and diff all follow the active thread's folder.</p>
+
+      <h2 id="mcp">MCP servers</h2>
+      <p>MCP view → Add (stdio command or HTTP URL), enable, Inspect tools, run calls manually. Enabled servers lend <code>mcp__server__tool</code> tools to the agent behind approval. Config is plain JSON (<code>.mtrini/mcp.json</code>) — import/export Claude-shaped files with one click.</p>
+
+      <h2 id="images">Images</h2>
+      <p>Images view → prompt + provider + model + size → Generate. Supported: OpenAI-shape APIs, Gemini native, Hugging Face bytes, SD WebUI, with an OpenAI→SD fallback for local servers. Files land in <code>.mtrini/images/</code> per folder.</p>
+
+      <h2 id="skills">Skills</h2>
+      <p>16 built-in skills (review, debugging, testing, security, performance, SQL, Git…) load into agent context. Add your own as <code>.mtrini/skills/&lt;name&gt;/SKILL.md</code> — project or global (<code>~/.mtrini/skills</code>).</p>
+
+      <h2 id="api">API</h2>
+      <p>Full reference in the repo at <code>docs/API.md</code>: threads, automations, tools, Git, providers, Hugging Face, MCP, images, chat/agent SSE streams. Every route accepts an optional <code>workspace</code>.</p>
+
+      <h2 id="faq">FAQ</h2>
+      <ul>
+        <li><strong>Is it really free?</strong> Yes — Apache-2.0. You only ever pay model providers you choose.</li>
+        <li><strong>Does it work offline?</strong> Yes with a local model: agent, editor, terminal, Git, skills all run locally.</li>
+        <li><strong>Where are my keys?</strong> OS keychain (or a 0600 local fallback). Never in git, logs, or the UI bundle.</li>
+        <li><strong>Which model should I start with?</strong> Qwen2.5-Coder via Ollama for code, or any provider's flagship for reasoning.</li>
+      </ul>
+    </article>
+  </div>
+  <footer><span>© 2026 Compiwer AI · Apache-2.0</span><span class="sp"></span><a href="index.html">Home</a></footer>
+</div>
+<script>
+document.getElementById('q').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('aside a').forEach((a) => {
+    a.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+</body>
+</html>
