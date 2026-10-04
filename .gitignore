@@ -1,4 +1,5 @@
 # Mtrini Workspace — dependencies, secrets, runtimes, OS junk
+promo/
 node_modules/
 frontend/node_modules/
 frontend/dist/
