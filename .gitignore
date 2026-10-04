@@ -1,0 +1,48 @@
+# Mtrini Workspace — dependencies, secrets, runtimes, OS junk
+node_modules/
+frontend/node_modules/
+frontend/dist/
+backend/__pycache__/
+backend/.pytest_cache/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.spec
+installer/
+*.egg-info/
+
+# Secrets — never commit
+.mtrini/secrets.json
+**/secrets.json
+.env
+.env.*
+backend/mtrini_data/
+*.db
+*.sqlite
+*.sqlite3
+config.local.json
+
+# Model weights / downloads (large, local only)
+models/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+
+# Logs / diagnostics exports
+logs/
+*.log
+diagnostics-*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,8 @@
+{
+  "activeModel": "",
+  "activeProvider": "local",
+  "theme": "dark",
+  "router": { "fast": "mock:mock-fast", "coding": "mock:mock-coder", "reasoning": "", "vision": "", "general": "" },
+  "permissions": { "defaultMode": "ask" },
+  "context": { "maxTokens": 32000, "historyLimit": 40 }
+}
