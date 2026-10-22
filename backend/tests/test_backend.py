@@ -372,3 +372,60 @@ def test_effort_payloads():
             body = _j.loads(route.calls[0].request.content)
             assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 1024}
     anyio.run(_go)
+
+
+# ---- skills ----
+
+def test_skill_frontmatter_parsing():
+    from mtrini import project as project_mod
+
+    meta, body = project_mod.parse_skill("---\nname: review\ndescription: Review a diff\n---\n\nCheck the diff.\n")
+    assert meta == {"name": "review", "description": "Review a diff"}
+    assert body.startswith("Check the diff.")
+    meta2, body2 = project_mod.parse_skill("# Plain skill\nDo things.")
+    assert meta2 == {} and body2.startswith("# Plain skill")
+
+
+def test_skills_crud_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("MTRINI_WORKSPACE", str(tmp_path))
+    c = TestClient(app)
+    r = c.post("/api/skills", json={"name": "write-tests", "description": "Write unit tests for changed code",
+                                    "content": "Add tests next to the code you change.", "scope": "project"})
+    assert r.status_code == 200, r.text
+    assert (tmp_path / ".mtrini" / "skills" / "write-tests" / "SKILL.md").exists()
+
+    listed = c.get("/api/skills").json()["skills"]
+    assert listed == [{"name": "write-tests", "scope": "project",
+                       "description": "Write unit tests for changed code",
+                       "summary": "Write unit tests for changed code"}]
+    got = c.get("/api/skills/write-tests").json()
+    assert got["description"] == "Write unit tests for changed code"
+    assert got["body"].startswith("Add tests")
+
+    assert c.delete("/api/skills/write-tests").status_code == 200
+    assert c.get("/api/skills").json()["skills"] == []
+    assert c.delete("/api/skills/write-tests").status_code == 404
+
+
+def test_skill_names_are_validated(tmp_path, monkeypatch):
+    monkeypatch.setenv("MTRINI_WORKSPACE", str(tmp_path))
+    c = TestClient(app)
+    for bad in ["../escape", "Upper", "", "a" * 64, "has space"]:
+        r = c.post("/api/skills", json={"name": bad, "description": "x", "content": "y"})
+        assert r.status_code == 400, bad
+    assert c.post("/api/skills", json={"name": "ok", "description": "", "content": "y"}).status_code == 400
+    assert c.post("/api/skills", json={"name": "ok", "description": "x", "content": "y", "scope": "elsewhere"}).status_code == 400
+    assert c.get("/api/skills/..").status_code == 404
+
+
+def test_skill_context_injects_invoked_skill(tmp_path):
+    from mtrini import project as project_mod
+
+    project_mod.write_skill(tmp_path, "review", "Review the current diff", "Look for bugs first.")
+    project_mod.write_skill(tmp_path, "commit", "Write a commit message", "Use the imperative mood.")
+    ctx = project_mod.skill_context(tmp_path, "please /review my change")
+    assert "- review: Review the current diff" in ctx
+    assert "- commit: Write a commit message" in ctx
+    assert "Look for bugs first." in ctx
+    assert "Use the imperative mood." not in ctx
+    assert project_mod.skill_context(tmp_path / "empty", "/review") == ""

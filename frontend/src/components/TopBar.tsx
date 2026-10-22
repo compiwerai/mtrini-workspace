@@ -7,7 +7,7 @@ export default function TopBar({ title, project, onOpen, onCommit, diffOpen, onT
 }) {
   return (
     <header className="topbar">
-      <span className="title">{title || 'New thread'}</span>
+      <span className="title">{title || 'New session'}</span>
       {project && <span className="tag">{project}</span>}
       <span className="sp" />
       <button className="btn" onClick={onOpen} title="Reveal project folder">{I.open()} Open</button>

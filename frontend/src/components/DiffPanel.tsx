@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { I } from './Icon';
 
-function parseStatus(porcelain: string): { path: string; code: string }[] {
-  return porcelain.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => ({
-    code: l.slice(0, 2), path: l.slice(3).replace(/^"(.+)"$/, '$1'),
-  }));
+export function parseStatus(porcelain: string): { path: string; code: string }[] {
+  // Porcelain v1: "XY path". The first two columns are significant, so only strip line endings.
+  return porcelain.split('\n').map((l) => l.replace(/\r$/, ''))
+    .filter((l) => l.length > 3 && !l.startsWith('##'))
+    .map((l) => ({ code: l.slice(0, 2), path: l.slice(3).replace(/^"(.+)"$/, '$1') }));
 }
 
 export default function DiffPanel({ tick }: { tick: number }) {
