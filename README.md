@@ -42,12 +42,12 @@ No Python/Node needed at runtime:
 
 ```powershell
 .\scripts\build-exe.ps1        # builds frontend, exe -> dist\MtriniWorkspace\
-iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.6.1.exe
+iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.7.0.exe
 ```
 
 Run `MtriniWorkspace.exe` (or install the Setup): it serves the API **and**
 the UI from one process and opens `http://127.0.0.1:8787` in your browser.
-Silent install: `MtriniWorkspace-Setup-0.6.1.exe /SILENT`.
+Silent install: `MtriniWorkspace-Setup-0.7.0.exe /SILENT`.
 
 ## Hugging Face → run locally (tested flow)
 

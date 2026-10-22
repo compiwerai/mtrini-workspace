@@ -7,12 +7,23 @@ export type UISettings = {
   wordWrap: boolean;
   terminalFontSize: number;
   permissionMode: 'ask' | 'auto' | 'readonly';
+  uiFontSize: number;
+  contentWidth: 'normal' | 'wide';
+  motion: 'system' | 'reduce';
+  showChanges: boolean;
+  sendKey: 'enter' | 'mod-enter';
+  defaultEffort: 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  toolsExpanded: boolean;
+  showStarters: boolean;
+  confirmDelete: boolean;
+  useSkills: boolean;
+  useInstructions: boolean;
 };
 
 const KEY = 'mtrini.ui';
 
 export const DEFAULTS: UISettings = {
-  theme: 'glass',
+  theme: 'light',
   accent: 'teal',
   density: 'comfortable',
   editorFontSize: 13,
@@ -20,6 +31,17 @@ export const DEFAULTS: UISettings = {
   wordWrap: false,
   terminalFontSize: 12,
   permissionMode: 'ask',
+  uiFontSize: 14,
+  contentWidth: 'normal',
+  motion: 'system',
+  showChanges: true,
+  sendKey: 'enter',
+  defaultEffort: 'off',
+  toolsExpanded: false,
+  showStarters: true,
+  confirmDelete: true,
+  useSkills: true,
+  useInstructions: true,
 };
 
 export function loadSettings(): UISettings {
@@ -40,6 +62,9 @@ export function applySettings(s: UISettings) {
   root.dataset.theme = theme;
   root.dataset.accent = s.accent;
   root.dataset.density = s.density;
+  root.dataset.width = s.contentWidth;
+  root.dataset.motion = s.motion;
+  root.style.setProperty('--ui-size', `${s.uiFontSize}px`);
 }
 
 export function saveSettings(patch: Partial<UISettings>): UISettings {

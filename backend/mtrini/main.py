@@ -266,12 +266,47 @@ def project(workspace: str | None = None):
             "skills": project_mod.list_skills(r), "agents": project_mod.list_agents(r)}
 
 
+@app.get("/api/skills")
+def skills_list(workspace: str | None = None):
+    return {"skills": project_mod.list_skills(root(workspace))}
+
+
 @app.get("/api/skills/{name}")
 def skill(name: str, workspace: str | None = None):
     try:
-        return {"name": name, "content": project_mod.read_skill(root(workspace), name)}
+        text = project_mod.read_skill(root(workspace), name)
     except FileNotFoundError:
         raise HTTPException(404, "Skill not found")
+    meta, body = project_mod.parse_skill(text)
+    return {"name": name, "content": text, "description": meta.get("description", ""), "body": body}
+
+
+class SkillBody(BaseModel):
+    name: str
+    description: str
+    content: str
+    scope: str = "project"
+    workspace: str | None = None
+
+
+@app.post("/api/skills")
+def skill_save(body: SkillBody):
+    if body.scope not in project_mod.SKILL_SCOPES:
+        raise HTTPException(400, "scope must be 'project' or 'global'")
+    try:
+        path = project_mod.write_skill(root(body.workspace), body.name, body.description, body.content, body.scope)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "name": body.name, "scope": body.scope, "path": str(path)}
+
+
+@app.delete("/api/skills/{name}")
+def skill_delete(name: str, scope: str = "project", workspace: str | None = None):
+    if scope not in project_mod.SKILL_SCOPES:
+        raise HTTPException(400, "scope must be 'project' or 'global'")
+    if not project_mod.delete_skill(root(workspace), name, scope):
+        raise HTTPException(404, "Skill not found")
+    return {"ok": True}
 
 
 class ExecBody(BaseModel):
@@ -489,6 +524,8 @@ class AgentBody(BaseModel):
     permissionMode: str = "ask"
     workspace: str | None = None
     effort: str = "off"
+    useSkills: bool = True  # include skills in the agent's context
+    useInstructions: bool = True  # include .mtrini/instructions.md
     approve: dict[str, Any] | None = None  # {tool, args} — execute an approved tool immediately
 
 
@@ -501,12 +538,18 @@ async def agent(body: AgentBody):
         return res
     cfg = load_config(r)
     settings = cfg.get(f"provider.{body.provider}", {})
-    # Inject project instructions + skill list as a leading system message.
+    # Inject project instructions + skills (the list, plus any /skill invoked in this
+    # message) as a leading system message.
     history = list(body.history)
-    instr = project_mod.load_instructions(r)
-    if instr and not any(h.get("role") == "system" for h in history):
-        history.insert(0, {"role": "system",
-                           "content": f"Project instructions (.mtrini/instructions.md):\n{instr}"})
+    parts = []
+    instr = project_mod.load_instructions(r) if body.useInstructions else ""
+    if instr:
+        parts.append(f"Project instructions (.mtrini/instructions.md):\n{instr}")
+    skills = project_mod.skill_context(r, body.message) if body.useSkills else ""
+    if skills:
+        parts.append(skills)
+    if parts and not any(h.get("role") == "system" for h in history):
+        history.insert(0, {"role": "system", "content": "\n\n".join(parts)})
 
     async def gen():
         async for ev in agent_engine.run_agent(

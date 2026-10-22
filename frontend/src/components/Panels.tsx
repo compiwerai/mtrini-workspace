@@ -1,35 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 
-export function SkillsView() {
-  const [skills, setSkills] = useState<any[]>([]);
-  const [open, setOpen] = useState<string | null>(null);
-  const [content, setContent] = useState('');
-
-  useEffect(() => { api.project().then((p) => setSkills(p.skills || [])).catch(() => {}); }, []);
-  const view = async (name: string) => {
-    setOpen(name);
-    try { const r = await fetch(`/api/skills/${name}`); const d = await r.json(); setContent(d.content || ''); }
-    catch { setContent('(unavailable)'); }
-  };
-
-  return (
-    <div className="view">
-      <h2>Skills</h2>
-      <p style={{ color: 'var(--muted)' }}>Reusable instructions loaded into agent context. Project <code>.mtrini/skills/*/SKILL.md</code> or global <code>~/.mtrini/skills/</code>.</p>
-      {skills.map((s) => (
-        <div className="card" key={s.scope + s.name}>
-          <div className="row"><strong>{s.name}</strong><span className="tag">{s.scope}</span><span style={{ flex: 1 }} />
-            <button className="btn" onClick={() => view(s.name)}>View</button></div>
-          <div style={{ color: 'var(--muted)' }}>{s.summary}</div>
-          {open === s.name && <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{content}</pre>}
-        </div>
-      ))}
-      {skills.length === 0 && <div style={{ color: 'var(--muted)' }}>No skills found.</div>}
-    </div>
-  );
-}
-
 export function AutomationsView({ onRun }: { onRun: (threadId: string, prompt: string) => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [name, setName] = useState('');

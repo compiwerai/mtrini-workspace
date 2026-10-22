@@ -1,3 +1,6 @@
+export type SkillScope = 'project' | 'global';
+export type Skill = { name: string; scope: SkillScope; description: string; summary?: string };
+
 const BASE = (import.meta as any).env?.VITE_API || '';
 
 let WS: string | null = localStorage.getItem('mtrini.workspace');
@@ -58,6 +61,10 @@ export const api = {
   models: (provider: string) => j<any>(`/api/models?provider=${encodeURIComponent(provider)}`),
   registry: () => j<any>('/api/registry'),
   project: () => j<any>('/api/project'),
+  skills: () => j<{ skills: Skill[] }>('/api/skills'),
+  skill: (name: string) => j<{ name: string; content: string; description: string; body: string }>(`/api/skills/${encodeURIComponent(name)}`),
+  saveSkill: (b: { name: string; description: string; content: string; scope: SkillScope }) => j<any>('/api/skills', { method: 'POST', body: JSON.stringify(b) }),
+  deleteSkill: (name: string, scope: SkillScope) => j<any>(`/api/skills/${encodeURIComponent(name)}?scope=${scope}`, { method: 'DELETE' }),
   browse: (path?: string) => j<any>(`/api/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`, undefined, { pin: true }),
   execTool: (tool: string, args: any) => j<any>('/api/tools/execute', { method: 'POST', body: JSON.stringify({ tool, args }) }),
   gitStatus: () => j<any>('/api/git/status'),

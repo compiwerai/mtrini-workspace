@@ -5,9 +5,9 @@ import App from './App';
 describe('workspace shell', () => {
   it('renders sidebar and composer', () => {
     render(<App />);
-    expect(screen.getByText('MTRINI')).toBeTruthy();
-    expect(screen.getAllByText('New thread').length).toBeGreaterThan(0);
-    expect(screen.getByPlaceholderText(/follow-up/i)).toBeTruthy();
+    expect(screen.getByText('Mtrini Workspace')).toBeTruthy();
+    expect(screen.getAllByText(/New session/).length).toBeGreaterThan(0);
+    expect(screen.getByPlaceholderText(/for skills/i)).toBeTruthy();
   });
 
   it('opens the command menu on Ctrl+K', () => {
