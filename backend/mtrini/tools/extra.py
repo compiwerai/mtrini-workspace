@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ..proc import NO_WINDOW
 from . import Tool
 
 
@@ -16,7 +17,7 @@ async def _run(cmd: str, cwd: Path, timeout: float = 120.0) -> dict[str, Any]:
     if _os.name == "nt":
         proc = await asyncio.create_subprocess_shell(
             cmd, cwd=str(cwd),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
     else:
         proc = await asyncio.create_subprocess_shell(
             cmd, cwd=str(cwd), executable="/bin/sh",
@@ -37,7 +38,7 @@ def _h_exec(root: Path, a: dict[str, Any]):
 
 
 def _git(root: Path, args: list[str]) -> dict[str, Any]:
-    p = subprocess.run(["git"] + args, cwd=str(root), capture_output=True, text=True, timeout=30)
+    p = subprocess.run(["git"] + args, cwd=str(root), capture_output=True, text=True, timeout=30, **NO_WINDOW)
     return {"exitCode": p.returncode, "stdout": p.stdout[-20000:], "stderr": p.stderr[-5000:]}
 
 
@@ -124,10 +125,15 @@ def _h_inspect(root: Path, a: dict[str, Any]):
 
 
 def _h_python(root: Path, a: dict[str, Any]):
+    import shutil
     import sys
 
-    p = subprocess.run([sys.executable, "-c", a["code"]], cwd=str(root),
-                       capture_output=True, text=True, timeout=int(a.get("timeout", 30)))
+    # In the packaged app sys.executable is MtriniWorkspace.exe, so use the system Python instead.
+    py = shutil.which("python") or shutil.which("py") if getattr(sys, "frozen", False) else sys.executable
+    if not py:
+        return {"exitCode": 127, "stdout": "", "stderr": "Python was not found on PATH. Install Python to use this tool."}
+    p = subprocess.run([py, "-c", a["code"]], cwd=str(root),
+                       capture_output=True, text=True, timeout=int(a.get("timeout", 30)), **NO_WINDOW)
     return {"exitCode": p.returncode, "stdout": p.stdout[-20000:], "stderr": p.stderr[-5000:]}
 
 

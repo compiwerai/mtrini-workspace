@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .proc import NO_WINDOW
+
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 PROTOCOL = "2024-11-05"
 
@@ -134,7 +136,7 @@ class StdioSession:
         proc = await asyncio.create_subprocess_exec(
             self.srv["command"], *(self.srv.get("args", [])),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL, env=env)
+            stderr=asyncio.subprocess.DEVNULL, env=env, **NO_WINDOW)
         assert proc.stdin and proc.stdout
         tools: dict[str, Any] = {}
 
