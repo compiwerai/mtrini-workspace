@@ -17,6 +17,7 @@ from . import models as models_mod
 from . import project as project_mod
 from .agent import engine as agent_engine
 from .config import delete_secret, get_secret, load_config, save_config, set_secret, workspace_root
+from .proc import NO_WINDOW
 from .providers import ChatMessage
 from .providers.registry import PROVIDER_META, build_provider
 from .tools import registry as tools_registry
@@ -341,7 +342,7 @@ def git_diff(path: str = ".", cached: bool = False, workspace: str | None = None
 
     args = ["git", "diff", "--cached" if cached else "--", path] if cached else ["git", "diff", "--", path]
     try:
-        p = _sp.run(args, cwd=str(root(workspace)), capture_output=True, text=True, timeout=30)
+        p = _sp.run(args, cwd=str(root(workspace)), capture_output=True, text=True, timeout=30, **NO_WINDOW)
         return {"ok": p.returncode == 0, "output": {"stdout": p.stdout[-20000:], "stderr": p.stderr[-5000:]}}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
@@ -360,7 +361,7 @@ def git_commit(body: CommitBody):
         raise HTTPException(400, "Commit message is empty")
     try:
         p = _sp.run(["git", "commit", "-m", body.message.strip()], cwd=str(root(body.workspace)),
-                    capture_output=True, text=True, timeout=60)
+                    capture_output=True, text=True, timeout=60, **NO_WINDOW)
     except Exception as e:
         raise HTTPException(500, str(e)[:300])
     if p.returncode != 0:
@@ -590,7 +591,7 @@ def git_stage(body: StageBody):
         raise HTTPException(400, "no paths given")
     try:
         p = _sp.run(["git", "add", "--", *body.paths], cwd=str(root(body.workspace)),
-                    capture_output=True, text=True, timeout=60)
+                    capture_output=True, text=True, timeout=60, **NO_WINDOW)
     except Exception as e:
         raise HTTPException(500, str(e)[:300])
     if p.returncode != 0:

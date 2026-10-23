@@ -1,6 +1,6 @@
 ; Mtrini Workspace — Windows installer (compile with Inno Setup 6: iscc scripts\setup.iss)
 #define MyAppName "Mtrini Workspace"
-#define MyAppVersion "0.7.0"
+#define MyAppVersion "0.7.1"
 #define MyAppPublisher "Compiwer AI"
 #define MyAppExeName "MtriniWorkspace.exe"
 
