@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, getWorkspace, setExecOverride, setWorkspace, sse, touchRecent } from './api/client';
 import CommandMenu, { ActionId } from './components/CommandMenu';
-import { applySettings, loadSettings } from './lib/settings';
+import { applySettings, loadSettings, saveSettings } from './lib/settings';
 import DiffPanel from './components/DiffPanel';
 import FilesView from './components/FilesView';
 import ImagesView from './components/ImagesView';
@@ -10,7 +10,7 @@ import { AutomationsView } from './components/Panels';
 import SkillsView from './components/SkillsView';
 import SettingsPanel from './components/SettingsPanel';
 import Sidebar, { Nav } from './components/Sidebar';
-import ThreadView, { BUILTIN_COMMANDS, Msg } from './components/ThreadView';
+import ThreadView, { BUILTIN_COMMANDS, Img, Msg, PlanDecision, Todo } from './components/ThreadView';
 import TopBar from './components/TopBar';
 import WorkspacePicker from './components/WorkspacePicker';
 
@@ -27,6 +27,18 @@ export function formatToolOutput(v: any): string {
   return JSON.stringify(v, null, 2).slice(0, 4000);
 }
 
+/** A saved thread entry -> transcript row. */
+function threadMsg(m: any): Msg {
+  if (m.role === 'tool' && m.tool) {
+    const ok = m.ok !== false;
+    return {
+      role: 'tool', text: m.tool, tool: m.tool, id: m.id, args: m.args, ok, status: ok ? 'ok' : 'error', ms: m.durationMs,
+      output: ok ? formatToolOutput(m.output) : formatToolOutput(m.error), diff: ok ? m.output?.diff : undefined,
+    };
+  }
+  return { role: m.role, text: m.content, turn: m.turn, images: m.images || undefined };
+}
+
 const NAV_TITLES: Record<Nav, string> = {
   thread: '', files: 'Files', images: 'Images', mcp: 'MCP servers', automations: 'Automations', skills: 'Skills', settings: 'Settings',
 };
@@ -38,7 +50,10 @@ export default function App() {
   const [title, setTitle] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]);
   const [files, setFiles] = useState<string[]>([]);
-  const [pending, setPending] = useState<{ tool: string; args: any; mcp?: { server: string; tool: string } } | null>(null);
+  const [pending, setPending] = useState<{ tool: string; args: any; rule?: string; mcp?: { server: string; tool: string } } | null>(null);
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [plan, setPlan] = useState<string | null>(null);
+  const [hooksUntrusted, setHooksUntrusted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
@@ -82,6 +97,10 @@ export default function App() {
       const provs = (await api.providers()).providers || [];
       setNeedsSetup(!provs.some((p: any) => p.configured));
     } catch { setNeedsSetup(false); }
+    try {
+      const h = await api.hooks();
+      setHooksUntrusted(!!h.present && !h.trusted);
+    } catch { setHooksUntrusted(false); }
   }, [loadThreads]);
 
   useEffect(() => {
@@ -131,6 +150,7 @@ export default function App() {
     setWs(path);
     setPicking(false);
     setActiveId(null); setTitle(''); setMessages([]); setFiles([]); setPending(null); setNav('thread');
+    setTodos([]); setPlan(null);
     setThreadWs(null);
     setExecOverride(null);
     loadContext();
@@ -144,17 +164,24 @@ export default function App() {
       const tws = t.workspace || null;
       setThreadWs(tws);
       setExecOverride(tws);
-      setMessages((t.messages || []).map((m: any) => ({ role: m.role, text: m.content })));
+      setMessages((t.messages || []).map(threadMsg));
       setFiles([]);
-      setPending(null);
+      setPending(null); setPlan(null); setTodos([]);
       setNav('thread');
       loadContext();
+      try {
+        const sess = await api.agentSession(id);
+        setTodos(sess.todos || []);
+        if (sess.pending?.kind === 'tool') setPending({ tool: sess.pending.tool, args: sess.pending.args, rule: sess.pending.rule });
+        if (sess.pending?.kind === 'plan') setPlan(sess.pending.plan || '');
+      } catch { /* no session yet */ }
     } catch { setToast('Thread not found'); }
   };
 
   const newThread = () => {
     setEffort(loadSettings().defaultEffort);
     setActiveId(null); setTitle(''); setMessages([]); setFiles([]); setPending(null); setNav('thread');
+    setTodos([]); setPlan(null);
     setThreadWs(null);
     setExecOverride(null);
   };
@@ -165,34 +192,31 @@ export default function App() {
     loadThreads();
   };
 
-  const send = async (text: string, seeded = false) => {
+  const splitModel = () => {
     const [provider, ...rest] = model.split(':');
-    const mid = rest.join(':') || '';
-    if (!mid) { setToast('Pick a model id first (or configure a provider in Settings)'); return; }
-    let tid = activeId;
-    if (!tid) {
-      const th = await api.createThread(text.slice(0, 42) || 'Untitled');
-      tid = th.id;
-      setActiveId(tid);
-      setTitle(th.title);
-      if (th.workspace) { setThreadWs(th.workspace); setExecOverride(th.workspace); }
-      loadThreads();
-    }
-    const id = tid as string;
-    if (!seeded) await api.appendMsg(id, 'user', text).catch(() => {});
-    setMessages((m) => [...m, { role: 'user', text }]);
+    return { provider, mid: rest.join(':') || '' };
+  };
+
+  /** Stream one /api/agent request (a new message or an answer to an approval) into the transcript. */
+  const stream = async (id: string, body: any) => {
     setBusy(true);
     abort.current = new AbortController();
     let acc = '';
-    const push = (e: Msg) => setMessages((m) => [...m.slice(-200), e]);
+    const push = (e: Msg) => setMessages((m) => [...m.slice(-300), e]);
     const fmt = (v: any) => formatToolOutput(v);
+    const update = (match: (x: Msg) => boolean, patch: Partial<Msg>, fallback?: Msg) => setMessages((m) => {
+      for (let k = m.length - 1; k >= 0; k--) {
+        if (match(m[k])) { const next = m.slice(); next[k] = { ...m[k], ...patch }; return next; }
+      }
+      return fallback ? [...m, fallback] : m;
+    });
     setStatus('Starting…');
-    const history = [...messages.filter((m) => m.role === 'user' || m.role === 'assistant').map((m) => ({ role: m.role, content: m.text })),
-      { role: 'user', content: text }];
     try {
-      for await (const ev of sse('/api/agent', { provider, model: mid, message: text, history, permissionMode: permMode, effort, useSkills: loadSettings().useSkills, useInstructions: loadSettings().useInstructions }, abort.current.signal)) {
+      for await (const ev of sse('/api/agent', { ...body, threadId: id }, abort.current.signal)) {
         if (ev.type === 'status') {
           setStatus(ev.message || '');
+        } else if (ev.type === 'turn') {
+          update((x) => x.role === 'user' && !x.turn, { turn: ev.turn });
         } else if (ev.type === 'assistant_delta') {
           acc += ev.delta;
           setMessages((m) => {
@@ -209,73 +233,149 @@ export default function App() {
             });
             acc = '';
           }
-          push({ role: 'tool', text: ev.tool, tool: ev.tool, args: ev.args, status: 'running' });
+          push({ role: 'tool', text: ev.tool, tool: ev.tool, args: ev.args, id: ev.id, parent: ev.parent, status: 'running' });
           const p = ev.args?.path || ev.args?.dst;
           if (p && ['write_file', 'edit_file', 'move_file'].includes(ev.tool)) {
             setFiles((f) => (f.includes(p) ? f : [...f, p]));
           }
         } else if (ev.type === 'tool_result') {
-          const done: Partial<Msg> = { status: ev.ok ? 'ok' : 'error', ok: ev.ok, ms: ev.durationMs, output: ev.ok ? fmt(ev.output) : fmt(ev.error) };
-          setMessages((m) => {
-            for (let k = m.length - 1; k >= 0; k--) {
-              if (m[k].role === 'tool' && m[k].tool === ev.tool && m[k].status === 'running') {
-                const next = m.slice(); next[k] = { ...m[k], ...done }; return next;
-              }
-            }
-            return [...m, { role: 'tool', text: ev.tool, tool: ev.tool, args: ev.args, ...done } as Msg];
-          });
+          const done: Partial<Msg> = {
+            status: ev.ok ? 'ok' : 'error', ok: ev.ok, ms: ev.durationMs,
+            output: ev.ok ? fmt(ev.output) : fmt(ev.error), diff: ev.ok ? ev.output?.diff : undefined,
+          };
+          update((x) => x.role === 'tool' && x.status === 'running' && (ev.id ? x.id === ev.id : x.tool === ev.tool), done,
+            { role: 'tool', text: ev.tool, tool: ev.tool, args: ev.args, id: ev.id, parent: ev.parent, ...done } as Msg);
           if (['write_file', 'edit_file', 'move_file', 'delete_file'].includes(ev.tool)) setDiffTick((t) => t + 1);
+        } else if (ev.type === 'subagent') {
+          if (ev.status === 'start') push({ role: 'tool', text: 'task', tool: 'task', id: ev.id, args: { description: ev.description }, status: 'running' });
+          else update((x) => x.id === ev.id && x.tool === 'task', { status: 'ok', ok: true, output: String(ev.result || '') });
+        } else if (ev.type === 'todos') {
+          setTodos(ev.todos || []);
+        } else if (ev.type === 'plan') {
+          setPlan(ev.plan || '');
+        } else if (ev.type === 'mode') {
+          setPermMode(ev.mode);
+          saveSettings({ permissionMode: ev.mode });
+        } else if (ev.type === 'compacted') {
+          push({ role: 'note', text: `Earlier conversation summarized to save context (~${ev.before} → ~${ev.after} tokens).` });
+        } else if (ev.type === 'hooks_untrusted') {
+          setHooksUntrusted(true);
         } else if (ev.type === 'permission_request') {
-          setPending({ tool: ev.tool, args: ev.args, mcp: ev.mcp });
+          setPending({ tool: ev.tool, args: ev.args, rule: ev.rule, mcp: ev.mcp });
         } else if (ev.type === 'error') {
           push({ role: 'assistant', text: `Error: ${ev.message}` });
         } else if (ev.type === 'done') {
           if (ev.pendingApproval) setPending(ev.pendingApproval);
-          if (acc) { await api.appendMsg(id, 'assistant', acc).catch(() => {}); }
           loadThreads();
         }
       }
     } catch (e: any) {
-      if (String(e?.name) === 'AbortError') {
-        if (acc) { await api.appendMsg(id, 'assistant', acc + '\n\n*(stopped)*').catch(() => {}); }
-        push({ role: 'assistant', text: '_Stopped._' });
-      } else {
-        push({ role: 'assistant', text: `Error: ${e.message || e}` });
-      }
+      if (String(e?.name) === 'AbortError') push({ role: 'assistant', text: '_Stopped._' });
+      else push({ role: 'assistant', text: `Error: ${e.message || e}` });
     } finally { setBusy(false); setStatus(''); abort.current = null; }
   };
 
-  const approve = async () => {
-    if (!pending) return;
-    const p = pending;
-    setPending(null);
-    const [provider, ...rest] = model.split(':');
-    setMessages((m) => [...m, { role: 'tool', text: p.tool, tool: p.tool, args: p.args, status: 'running' }]);
-    try {
-      const r = await fetch('/api/agent', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ provider, model: rest.join(':') || '', message: '', history: [], approve: p }),
-      });
-      const data = await r.json();
-      const out = data.output ?? data.error ?? '';
-      setMessages((m) => {
-        const next = m.slice();
-        for (let k = next.length - 1; k >= 0; k--) {
-          if (next[k].role === 'tool' && next[k].status === 'running' && next[k].tool === p.tool) {
-            next[k] = { ...next[k], status: data.ok ? 'ok' : 'error', ok: data.ok, output: formatToolOutput(out) };
-            break;
-          }
-        }
-        return next;
-      });
-      setDiffTick((t) => t + 1);
-    } catch (e: any) {
-      setMessages((m) => [...m, { role: 'tool', text: p.tool, tool: p.tool, args: p.args, status: 'error', ok: false, output: String(e.message || e) }]);
+  const send = async (text: string, images?: Img[]) => {
+    const { provider, mid } = splitModel();
+    if (!mid) { setToast('Pick a model id first (or configure a provider in Settings)'); return; }
+    let tid = activeId;
+    if (!tid) {
+      const th = await api.createThread(text.slice(0, 42) || 'Untitled');
+      tid = th.id;
+      setActiveId(tid);
+      setTitle(th.title);
+      if (th.workspace) { setThreadWs(th.workspace); setExecOverride(th.workspace); }
+      loadThreads();
     }
+    setPending(null); setPlan(null);
+    setMessages((m) => [...m, { role: 'user', text, images: images?.length || undefined }]);
+    // Threads from before 0.8 have no agent session yet: send the visible transcript once.
+    const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant').map((m) => ({ role: m.role, content: m.text }));
+    await stream(tid as string, {
+      provider, model: mid, message: text, history, permissionMode: permMode, effort,
+      useSkills: loadSettings().useSkills, useInstructions: loadSettings().useInstructions,
+      images: (images || []).map(({ mime, data }) => ({ mime, data })),
+    });
+  };
+
+  /** Answer the paused turn and let the same agent loop carry on. */
+  const resume = (answer: Record<string, any>) => {
+    if (!activeId) return;
+    const { provider, mid } = splitModel();
+    return stream(activeId, { provider, model: mid, message: '', permissionMode: permMode, effort, resume: answer });
+  };
+
+  const approve = async (always = false) => {
+    if (!pending) return;
+    setPending(null);
+    await resume({ decision: always ? 'always' : 'allow' });
+  };
+
+  const deny = async () => {
+    if (!pending) return;
+    setPending(null);
+    await resume({ decision: 'deny' });
+  };
+
+  const decidePlan = async (d: PlanDecision) => {
+    if (plan) setMessages((m) => [...m, { role: 'plan', text: plan }]);
+    setPlan(null);
+    await resume(d);
+  };
+
+  const rewind = async (turn: number) => {
+    if (!activeId || busy) return;
+    if (loadSettings().confirmDelete && !window.confirm('Rewind to before this message?\n\nFiles the agent changed from here on are put back (changes made by shell commands are not), and the conversation from here on is removed.')) return;
+    try {
+      const r = await api.rewind(activeId, turn);
+      setTodos([]);
+      await openThread(activeId);
+      if (r.prompt) setSeed((x) => ({ text: r.prompt, n: (x?.n || 0) + 1 }));
+      const f = r.files || { restored: [], removed: [], skipped: [] };
+      setToast(`Rewound. Files restored: ${f.restored.length}, removed: ${f.removed.length}${f.skipped.length ? `, not restorable: ${f.skipped.length}` : ''}`);
+      setDiffTick((t) => t + 1);
+    } catch (e: any) { setToast(`Rewind failed: ${e.message}`); }
+  };
+
+  const trustHooks = async () => {
+    try { await api.trustHooks(); setHooksUntrusted(false); setToast('Hooks trusted for this project'); } catch (e: any) { setToast(`Could not trust hooks: ${e.message}`); }
   };
 
   const runCommand = async (name: string) => {
+    const note = (text: string) => setMessages((m) => [...m, { role: 'note', text }]);
     if (name === 'clear') { newThread(); return; }
+    if (name === 'compact') {
+      if (!activeId) { note('Nothing to compact yet.'); return; }
+      const { provider, mid } = splitModel();
+      setBusy(true); setStatus('Summarizing earlier conversation…');
+      try {
+        const r = await api.compact(activeId, provider, mid);
+        note(r.compacted ? `Summarized ${r.summarized} earlier messages (~${r.before} → ~${r.after} tokens). The latest turn is kept word for word.` : `Nothing compacted: ${r.reason || 'the conversation is still short'}.`);
+      } catch (e: any) { note(`Compaction failed: ${e.message}`); } finally { setBusy(false); setStatus(''); }
+      return;
+    }
+    if (name === 'init') {
+      send('Look through this project and write .mtrini/instructions.md: a short guide for an AI coding agent working here (what the project is, how to build, test and run it, code style, the folders that matter, things to avoid). Keep it under 60 lines. If the file already exists, improve it instead.');
+      return;
+    }
+    if (name === 'agents') {
+      try {
+        const agents = (await api.project()).agents || [];
+        note(agents.length
+          ? `### Subagents\n${agents.map((a: any) => `- \`${a.name}\` ${String(a.content || '').split('\n').find((l: string) => l.trim() && !l.startsWith('---')) || ''}`).join('\n')}\n\nThe agent can start one with its task tool, e.g. "use the ${agents[0].name} agent to …".`
+          : 'No subagents yet. Add Markdown files to `.mtrini/agents/` (for example `reviewer.md` with instructions); the agent can then start them with its task tool.');
+      } catch { note('Could not read the project.'); }
+      return;
+    }
+    if (name === 'permissions') {
+      try {
+        const { allow } = await api.permissions();
+        note(allow.length
+          ? `### Always allowed\n${allow.map((r) => `- \`${r}\``).join('\n')}\n\nEdit or remove these in Settings → Agent.`
+          : 'Nothing is always allowed yet. Use **Always allow** on an approval card to add a rule.');
+      } catch { note('Could not read permission rules.'); }
+      return;
+    }
     if (name === 'skills') { setNav('skills'); return; }
     if (name === 'mcp') { setNav('mcp'); return; }
     if (name === 'settings') { setNav('settings'); return; }
@@ -330,9 +430,11 @@ export default function App() {
             {nav === 'thread' && (
               <ThreadView messages={messages} busy={busy} status={status} pending={pending} files={files}
                 branch={branch} model={model} setModel={setModel}
-                onSend={(t) => send(t)} onCommand={runCommand} onStop={() => abort.current?.abort()}
+                onSend={(t, imgs) => send(t, imgs)} onCommand={runCommand} onStop={() => abort.current?.abort()}
                 project={project} seed={seed}
-                onApprove={approve} onDeny={() => setPending(null)}
+                onApprove={approve} onDeny={deny}
+                todos={todos} plan={plan} onPlan={decidePlan}
+                hooksUntrusted={hooksUntrusted} onTrustHooks={trustHooks} onRewind={rewind}
                 needsSetup={needsSetup} onGoSettings={() => setNav('settings')}
                 threadWs={threadWs} onPickThreadFolder={() => { setFolderMode('thread'); setPicking(true); }}
                 effort={effort} setEffort={setEffort} />
@@ -343,7 +445,7 @@ export default function App() {
             {nav === 'skills' && <SkillsView onUse={useInSession} />}
             {nav === 'automations' && <AutomationsView onRun={async (tid, prompt) => {
               await openThread(tid);
-              send(prompt, true);
+              send(prompt);
             }} />}
             {nav === 'settings' && <div className="view"><SettingsPanel onToast={setToast} /></div>}
             {diffOpen && (nav === 'thread' || nav === 'files') && <DiffPanel tick={diffTick} />}

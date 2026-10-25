@@ -480,8 +480,7 @@ def api_auto_run(aid: str, body: AutoRunBody):
     if auto is None:
         raise HTTPException(404, "automation not found")
     r = root(body.workspace)
-    th = _t.create_thread(r, auto["name"])
-    _t.append_message(r, th["id"], "user", auto["prompt"])
+    th = _t.create_thread(r, auto["name"])  # the agent records the prompt when the client sends it
     return {"thread": th, "prompt": auto["prompt"]}
 
 
@@ -527,38 +526,178 @@ class AgentBody(BaseModel):
     effort: str = "off"
     useSkills: bool = True  # include skills in the agent's context
     useInstructions: bool = True  # include .mtrini/instructions.md
-    approve: dict[str, Any] | None = None  # {tool, args} — execute an approved tool immediately
+    approve: dict[str, Any] | None = None  # legacy: {tool, args} — run one approved tool, no resume
+    threadId: str | None = None  # keeps the agent's session (tool history, approvals) between requests
+    resume: dict[str, Any] | None = None  # answer a paused turn: {decision, mode?, feedback?}
+    images: list[dict[str, str]] = []  # [{mime, data(base64)}] attached to this message
+
+
+def _provider_settings(r: Path, provider: str) -> dict:
+    s = load_config(r).get(f"provider.{provider}", {})
+    return s if isinstance(s, dict) else {}
 
 
 @app.post("/api/agent")
 async def agent(body: AgentBody):
     r = root(body.workspace)
-    if body.approve:
+    if body.approve and not body.threadId:
         res = await agent_engine.run_approved_tool(r, body.approve.get("tool", ""), body.approve.get("args", {}),
                                                    body.approve.get("mcp"))
         return res
-    cfg = load_config(r)
-    settings = cfg.get(f"provider.{body.provider}", {})
-    # Inject project instructions + skills (the list, plus any /skill invoked in this
-    # message) as a leading system message.
-    history = list(body.history)
-    parts = []
+    settings = _provider_settings(r, body.provider)
+    # Project instructions go into the session's system prompt (set once, on the first turn);
+    # skills invoked in this message travel with the message itself.
     instr = project_mod.load_instructions(r) if body.useInstructions else ""
-    if instr:
-        parts.append(f"Project instructions (.mtrini/instructions.md):\n{instr}")
-    skills = project_mod.skill_context(r, body.message) if body.useSkills else ""
-    if skills:
-        parts.append(skills)
-    if parts and not any(h.get("role") == "system" for h in history):
-        history.insert(0, {"role": "system", "content": "\n\n".join(parts)})
+    system_extra = f"Project instructions (.mtrini/instructions.md):\n{instr}" if instr else ""
+    context = project_mod.skill_context(r, body.message) if body.useSkills and not body.resume else ""
+    images = [im for im in body.images if im.get("mime", "").startswith("image/") and im.get("data")][:8]
 
     async def gen():
         async for ev in agent_engine.run_agent(
-                r, body.provider, body.model, body.message, history,
-                body.permissionMode, settings if isinstance(settings, dict) else {},
-                effort=body.effort):
+                r, body.provider, body.model, body.message, list(body.history),
+                body.permissionMode, settings, effort=body.effort, thread_id=body.threadId,
+                resume=body.resume, images=images, system_extra=system_extra, context=context):
             yield f"data: {json.dumps(ev, default=str)}\n\n"
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+class ThreadOpBody(BaseModel):
+    threadId: str
+    workspace: str | None = None
+    turn: int = 0
+    files: bool = True
+    conversation: bool = True
+    provider: str = "local"
+    model: str = ""
+
+
+@app.get("/api/agent/session/{tid}")
+def api_agent_session(tid: str, workspace: str | None = None):
+    from .agent import checkpoints as _cp
+    from .agent import permissions as _p
+    from .agent import session as _s
+
+    r = root(workspace)
+    s = _s.load(r, tid)
+    pending = None
+    if s.pending:  # enough to redraw the approval or plan card after reopening the thread
+        if s.pending.get("kind") == "plan":
+            pending = {"kind": "plan", "plan": s.pending.get("plan", "")}
+        else:
+            call = s.pending["calls"][s.pending["index"]]
+            args = agent_engine._parse_args(call.get("arguments"))
+            destructive = getattr(tools_registry.BY_NAME.get(call["name"]), "permission", "") == "destructive"
+            pending = {"kind": "tool", "tool": call["name"], "args": args, "id": call["id"],
+                       "rule": None if destructive else _p.rule_for(call["name"], args)}
+    return {"todos": s.todos, "mode": s.mode, "turn": s.turn, "pending": pending,
+            "checkpoints": _cp.list_turns(r, tid)}
+
+
+@app.post("/api/agent/rewind")
+def api_rewind(body: ThreadOpBody):
+    """Rewind a thread to just before `turn`: restore files the agent changed and/or drop the turns."""
+    from . import threads as _t
+    from .agent import checkpoints as _cp
+    from .agent import session as _s
+
+    r = root(body.workspace)
+    out: dict[str, Any] = {"files": None, "prompt": ""}
+    if body.files:
+        out["files"] = _cp.rewind(r, body.threadId, body.turn)
+    if body.conversation:
+        s = _s.load(r, body.threadId)
+        idx = s.turn_index.get(str(body.turn))
+        if idx is not None:
+            s.messages = s.messages[:idx]
+            s.turn_index = {t: i for t, i in s.turn_index.items() if int(t) < body.turn}
+        s.pending = None
+        s.todos = []
+        s.turn = max(0, body.turn - 1)
+        s.save(r)
+        try:
+            th = _t.get_thread(r, body.threadId)
+            msgs = th.get("messages", [])
+            cut = next((i for i, m in enumerate(msgs) if m.get("role") == "user"
+                        and int(m.get("turn") or 0) >= body.turn), None)
+            if cut is not None:
+                out["prompt"] = msgs[cut].get("content", "")
+                th["messages"] = msgs[:cut]
+                _t.save_thread(r, th)
+        except FileNotFoundError:
+            pass
+    return out
+
+
+@app.post("/api/agent/compact")
+async def api_compact(body: ThreadOpBody):
+    r = root(body.workspace)
+    try:
+        return await agent_engine.compact_session(r, body.threadId, body.provider, body.model,
+                                                  _provider_settings(r, body.provider))
+    except Exception as e:
+        raise HTTPException(502, agent_engine.friendly_error(e))
+
+
+# ---- hooks, permission rules, web search settings ----
+
+@app.get("/api/hooks")
+def api_hooks(workspace: str | None = None):
+    from .agent import hooks as _h
+
+    return _h.status(root(workspace))
+
+
+@app.post("/api/hooks/trust")
+def api_hooks_trust(body: dict):
+    from .agent import hooks as _h
+
+    return _h.trust(root(body.get("workspace")))
+
+
+@app.get("/api/permissions")
+def api_permissions(workspace: str | None = None):
+    from .agent import permissions as _p
+
+    return {"allow": _p.load_rules(root(workspace))}
+
+
+@app.post("/api/permissions")
+def api_permissions_save(body: dict):
+    from .agent import permissions as _p
+
+    rules = [str(x) for x in body.get("allow", []) if str(x).strip()]
+    _p.save_rules(root(body.get("workspace")), rules)
+    return {"allow": _p.load_rules(root(body.get("workspace")))}
+
+
+@app.get("/api/websearch")
+def api_websearch(workspace: str | None = None):
+    from .tools.web import search_config
+
+    c = search_config(root(workspace))
+    return {"provider": c["provider"], "baseUrl": c["baseUrl"], "hasKey": bool(c["key"])}
+
+
+class WebSearchBody(BaseModel):
+    provider: str = ""
+    apiKey: str | None = None
+    baseUrl: str = ""
+    workspace: str | None = None
+
+
+@app.post("/api/websearch")
+def api_websearch_save(body: WebSearchBody):
+    from .tools.web import SEARCH_PROVIDERS
+
+    if body.provider and body.provider not in SEARCH_PROVIDERS:
+        raise HTTPException(400, "unknown search provider")
+    r = root(body.workspace)
+    if body.apiKey and body.provider in ("brave", "tavily"):
+        set_secret(r, f"mtrini-search-{body.provider}", "apiKey", body.apiKey)
+    cfg = load_config(r)
+    cfg["webSearch"] = {"provider": body.provider, "baseUrl": body.baseUrl.strip()}
+    save_config(r, cfg)
+    return api_websearch(body.workspace)
 
 
 # ---- terminal:dumb exec over REST (PTY streams via WebSocket in future) ----
@@ -624,6 +763,9 @@ def api_delete_thread(tid: str, workspace: str | None = None):
 
     if not _t.delete_thread(root(workspace), tid):
         raise HTTPException(404, "thread not found")
+    from .agent import session as _s
+
+    _s.delete(root(workspace), tid)
     return {"ok": True}
 
 

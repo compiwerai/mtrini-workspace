@@ -104,6 +104,18 @@ export const api = {
   generateImage: (provider: string, model: string, prompt: string, size: string) =>
     j<any>('/api/images/generate', { method: 'POST', body: JSON.stringify({ provider, model, prompt, size }) }),
   deleteImage: (id: string) => j<any>(`/api/images/${id}`, { method: 'DELETE' }),
+  agentSession: (id: string) => j<any>(`/api/agent/session/${id}`, undefined, { pin: true }),
+  rewind: (threadId: string, turn: number, files = true, conversation = true) =>
+    j<any>('/api/agent/rewind', { method: 'POST', body: JSON.stringify({ threadId, turn, files, conversation }) }, { pin: true }),
+  compact: (threadId: string, provider: string, model: string) =>
+    j<any>('/api/agent/compact', { method: 'POST', body: JSON.stringify({ threadId, provider, model }) }, { pin: true }),
+  hooks: () => j<any>('/api/hooks'),
+  trustHooks: () => j<any>('/api/hooks/trust', { method: 'POST', body: JSON.stringify({}) }),
+  permissions: () => j<{ allow: string[] }>('/api/permissions'),
+  savePermissions: (allow: string[]) => j<{ allow: string[] }>('/api/permissions', { method: 'POST', body: JSON.stringify({ allow }) }),
+  webSearch: () => j<{ provider: string; baseUrl: string; hasKey: boolean }>('/api/websearch'),
+  saveWebSearch: (b: { provider: string; apiKey?: string; baseUrl?: string }) =>
+    j<{ provider: string; baseUrl: string; hasKey: boolean }>('/api/websearch', { method: 'POST', body: JSON.stringify(b) }),
   branch: async () => { try { const r = await api.execTool('git_branch', {}); return r.output?.stdout?.trim() || 'master'; } catch { return '—'; } },
 };
 

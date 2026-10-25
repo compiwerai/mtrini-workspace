@@ -5,8 +5,17 @@ import { I } from './Icon';
 
 export type ToolStatus = 'running' | 'ok' | 'error';
 export type Msg = {
-  role: 'user' | 'assistant' | 'tool' | 'note';
+  role: 'user' | 'assistant' | 'tool' | 'note' | 'plan';
   text: string;
+  /** Tool call id (matches results to their call). */
+  id?: string;
+  /** Set on tool rows run by a subagent: the id of the `task` call. */
+  parent?: string;
+  /** Unified diff lines for file edits. */
+  diff?: string[];
+  /** User turn number (rewind target). */
+  turn?: number;
+  images?: number;
   /** Legacy tool detail text. */
   kind?: string;
   ok?: boolean;
@@ -24,7 +33,15 @@ export const BUILTIN_COMMANDS: { name: string; description: string }[] = [
   { name: 'skills', description: 'Open the skills manager' },
   { name: 'mcp', description: 'Manage MCP servers' },
   { name: 'settings', description: 'Open settings' },
+  { name: 'compact', description: 'Summarize earlier conversation to free up context' },
+  { name: 'init', description: 'Write .mtrini/instructions.md for this project' },
+  { name: 'agents', description: 'List this project\'s subagents (.mtrini/agents)' },
+  { name: 'permissions', description: 'Show tools and commands that are always allowed' },
 ];
+
+export type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' };
+export type Img = { mime: string; data: string; name: string };
+export type PlanDecision = { decision: 'approve' | 'reject'; mode?: 'ask' | 'auto'; feedback?: string };
 
 const FALLBACK_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom', 'openai', 'anthropic', 'gemini',
   'openrouter', 'mistral', 'deepseek', 'groq', 'together', 'fireworks', 'xai', 'cohere', 'azure', 'huggingface',
@@ -34,6 +51,7 @@ const MODES: { id: UISettings['permissionMode']; label: string }[] = [
   { id: 'ask', label: 'Ask before edits' },
   { id: 'auto', label: 'Auto-accept edits' },
   { id: 'readonly', label: 'Read-only' },
+  { id: 'plan', label: 'Plan mode' },
 ];
 
 const VERBS: Record<string, string> = {
@@ -42,12 +60,13 @@ const VERBS: Record<string, string> = {
   execute_command: 'Run', run_python: 'Python', inspect_project: 'Inspect project',
   detect_language: 'Detect language', detect_package_manager: 'Detect package manager',
   git_status: 'Git status', git_diff: 'Git diff', git_log: 'Git log', git_branch: 'Git branch', git_show: 'Git show',
+  web_fetch: 'Fetch', web_search: 'Web search', task: 'Subagent',
 };
 
 export function toolLabel(tool = '', args: any = {}): { verb: string; target: string } {
   const verb = VERBS[tool] || tool.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   const a = args || {};
-  const raw = a.command ?? a.path ?? a.query ?? a.pattern ?? a.src ?? a.code ?? '';
+  const raw = a.command ?? a.path ?? a.query ?? a.url ?? a.pattern ?? a.src ?? a.description ?? a.code ?? '';
   const target = typeof raw === 'string' ? raw : JSON.stringify(raw);
   const extra = a.dst ? ` → ${a.dst}` : '';
   return { verb, target: (target + extra).replace(/\s+/g, ' ').slice(0, 120) };
@@ -132,8 +151,9 @@ function ToolRow({ m, expanded }: { m: Msg; expanded: boolean }) {
   }
   const { verb, target } = toolLabel(m.tool, m.args);
   const status = m.status || 'ok';
+  const diff = m.diff && m.diff.length ? m.diff : null;
   return (
-    <details className={`toolrow ${status}`} open={status === 'error' || (expanded && !!m.output)}>
+    <details className={`toolrow ${status}${m.parent ? ' sub' : ''}`} open={status === 'error' || (expanded && !!(m.output || diff))}>
       <summary>
         <span className="tdot" aria-hidden="true" />
         <b>{verb}</b>
@@ -142,19 +162,85 @@ function ToolRow({ m, expanded }: { m: Msg; expanded: boolean }) {
           {status === 'running' ? 'running…' : status === 'error' ? 'failed' : m.ms != null ? `${m.ms} ms` : ''}
         </span>
       </summary>
-      {m.output && <pre>{m.output}</pre>}
+      {diff ? <DiffLines lines={diff} /> : m.output && <pre>{m.output}</pre>}
     </details>
   );
 }
 
-type Pending = { tool: string; args: any; mcp?: { server: string; tool: string } } | null;
+function DiffLines({ lines }: { lines: string[] }) {
+  const body = lines.filter((l) => !l.startsWith('---') && !l.startsWith('+++'));
+  return (
+    <pre className="difflines difftext" aria-label="Changes">
+      {body.map((l, i) => (
+        <span key={i} className={l.startsWith('@@') ? 'hunk' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : ''}>{l}{'\n'}</span>
+      ))}
+    </pre>
+  );
+}
+
+function TodoList({ todos }: { todos: Todo[] }) {
+  const [open, setOpen] = useState(true);
+  const done = todos.filter((t) => t.status === 'completed').length;
+  return (
+    <div className="todos" aria-label="Agent task list">
+      <button className="todohead" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        Tasks <span className="hint">{done}/{todos.length}</span>
+      </button>
+      {open && (
+        <ul>
+          {todos.map((t, i) => (
+            <li key={i} className={t.status}>
+              <span className="tbox" aria-hidden="true">{t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '•' : ''}</span>
+              <span>{t.content}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PlanCard({ plan, onPlan }: { plan: string; onPlan: (d: PlanDecision) => void }) {
+  const [feedback, setFeedback] = useState('');
+  return (
+    <div className="permcard plancard" role="alert">
+      <div className="permhead">Mtrini's plan</div>
+      <div className="planbody"><Body text={plan} /></div>
+      <div className="row">
+        <button className="btn primary" onClick={() => onPlan({ decision: 'approve', mode: 'auto' })}>Approve, auto-accept edits</button>
+        <button className="btn" onClick={() => onPlan({ decision: 'approve', mode: 'ask' })}>Approve, ask before edits</button>
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <input className="t" style={{ flex: 1 }} value={feedback} onChange={(e) => setFeedback(e.target.value)}
+          placeholder="Or tell Mtrini what to change" aria-label="Plan feedback"
+          onKeyDown={(e) => { if (e.key === 'Enter' && feedback.trim()) onPlan({ decision: 'reject', feedback }); }} />
+        <button className="btn" disabled={!feedback.trim()} onClick={() => onPlan({ decision: 'reject', feedback })}>Keep planning</button>
+      </div>
+    </div>
+  );
+}
+
+function readImage(f: File): Promise<Img | null> {
+  if (!f.type.startsWith('image/') || f.size > 8 * 1024 * 1024) return Promise.resolve(null);
+  return new Promise((res) => {
+    const r = new FileReader();
+    r.onload = () => res({ mime: f.type, data: String(r.result).split(',')[1] || '', name: f.name || 'image' });
+    r.onerror = () => res(null);
+    r.readAsDataURL(f);
+  });
+}
+
+type Pending = { tool: string; args: any; rule?: string; mcp?: { server: string; tool: string } } | null;
 
 export default function ThreadView({ messages, busy, status, pending, files, branch, setModel, onSend, onCommand, onStop, onApprove, onDeny,
-  needsSetup, onGoSettings, threadWs, onPickThreadFolder, effort, setEffort, project, seed }: {
+  needsSetup, onGoSettings, threadWs, onPickThreadFolder, effort, setEffort, project, seed,
+  todos = [], plan = null, onPlan = () => {}, hooksUntrusted = false, onTrustHooks = () => {}, onRewind }: {
   messages: Msg[]; busy: boolean; status: string; pending: Pending;
   files: string[]; branch: string; model: string; setModel: (m: string) => void;
-  onSend: (text: string) => void; onCommand: (name: string) => void;
-  onStop: () => void; onApprove: () => void; onDeny: () => void;
+  onSend: (text: string, images?: Img[]) => void; onCommand: (name: string) => void;
+  onStop: () => void; onApprove: (always?: boolean) => void; onDeny: () => void;
+  todos?: Todo[]; plan?: string | null; onPlan?: (d: PlanDecision) => void;
+  hooksUntrusted?: boolean; onTrustHooks?: () => void; onRewind?: (turn: number) => void;
   needsSetup: boolean; onGoSettings: () => void;
   threadWs: string | null; onPickThreadFolder: () => void;
   effort: string; setEffort: (e: string) => void;
@@ -169,6 +255,7 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
   const [menuIndex, setMenuIndex] = useState(0);
   const [mode, setMode] = useState<UISettings['permissionMode']>(loadSettings().permissionMode);
   const [ui, setUi] = useState<UISettings>(loadSettings());
+  const [images, setImages] = useState<Img[]>([]);
   const box = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
 
@@ -179,7 +266,11 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
     setModel(`${prov}:${mid}`);
   }, [prov]); // eslint-disable-line
   useEffect(() => { setModel(`${prov}:${mid}`); }, [mid]); // eslint-disable-line
-  useEffect(() => { try { box.current?.scrollTo(0, 1e9); } catch { /* jsdom */ } }, [messages, pending, status]);
+  useEffect(() => { try { box.current?.scrollTo(0, 1e9); } catch { /* jsdom */ } }, [messages, pending, status, plan]);
+  useEffect(() => {
+    // The plan card can switch the mode (approve → auto/ask): follow the app's setting.
+    setMode(loadSettings().permissionMode);
+  }, [plan]);
   useEffect(() => {
     if (!seed) return;
     setInput(seed.text);
@@ -200,7 +291,7 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
       ...BUILTIN_COMMANDS.map((c) => ({ ...c, kind: 'command' as const })),
       ...skills.map((s) => ({ name: s.name, description: s.description, kind: 'skill' as const })),
     ];
-    return items.filter((i) => i.name.startsWith(q)).slice(0, 8);
+    return items.filter((i) => i.name.startsWith(q)).slice(0, 10);
   }, [slash?.[1], skills]); // eslint-disable-line
   useEffect(() => { setMenuIndex(0); }, [menu.length]);
 
@@ -215,8 +306,21 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
     if (!text || busy) return;
     const cmd = /^\/([a-z0-9-]+)$/.exec(text);
     if (cmd && BUILTIN_COMMANDS.some((c) => c.name === cmd[1])) { setInput(''); onCommand(cmd[1]); return; }
-    onSend(text);
+    onSend(text, images.length ? images : undefined);
     setInput('');
+    setImages([]);
+  };
+
+  const addFiles = async (list: FileList | File[]) => {
+    const got = (await Promise.all(Array.from(list).map(readImage))).filter(Boolean) as Img[];
+    if (got.length) setImages((cur) => [...cur, ...got].slice(0, 8));
+  };
+  const onPaste = (e: React.ClipboardEvent) => {
+    const fs = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (fs.length) { e.preventDefault(); addFiles(fs); }
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer?.files?.length) { e.preventDefault(); addFiles(e.dataTransfer.files); }
   };
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -267,10 +371,31 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
           </div>
         )}
 
+        {hooksUntrusted && (
+          <div className="msg">
+            <div className="permcard" role="alert">
+              <div className="permhead">This project has hooks</div>
+              <p className="hint">.mtrini/hooks.json runs shell commands when the agent works. They stay off until you trust this exact file. Read it first.</p>
+              <div className="row">
+                <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('mtrini:open', { detail: '.mtrini/hooks.json' }))}>Open hooks.json</button>
+                <button className="btn primary" onClick={onTrustHooks}>Trust these hooks</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {messages.map((m, i) => (
           <div className={`msg ${m.role}`} key={i}>
             {m.role === 'user' ? (
-              <div className="userpill"><span>{m.text}</span></div>
+              <div className="userpill">
+                <span>{m.text}{m.images ? <em className="hint"> · {m.images} image{m.images > 1 ? 's' : ''}</em> : null}</span>
+                {onRewind && m.turn && !busy ? (
+                  <button className="rewind" title="Rewind: undo the agent's file changes and conversation from this message on"
+                    aria-label="Rewind to before this message" onClick={() => onRewind(m.turn as number)}>↺</button>
+                ) : null}
+              </div>
+            ) : m.role === 'plan' ? (
+              <div className="note"><div className="label-caps">Plan</div><Body text={m.text} /></div>
             ) : m.role === 'tool' ? (
               <ToolRow m={m} expanded={ui.toolsExpanded} />
             ) : m.role === 'note' ? (
@@ -280,6 +405,8 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
             )}
           </div>
         ))}
+
+        {plan && !busy && <div className="msg"><PlanCard plan={plan} onPlan={onPlan} /></div>}
 
         {busy && !pending && (
           <div className="msg"><div className="livestatus"><span className="spark" aria-hidden="true" />{status || 'Working…'}</div></div>
@@ -304,7 +431,12 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
               </div>
               <pre>{pendingLabel.target || JSON.stringify(pending.args, null, 1)}</pre>
               <div className="row">
-                <button className="btn primary" onClick={onApprove}>Allow once</button>
+                <button className="btn primary" onClick={() => onApprove(false)}>Allow once</button>
+                {pending.rule && (
+                  <button className="btn" onClick={() => onApprove(true)} title="Saved in .mtrini/permissions.json">
+                    Always allow <code>{pending.rule.replace(/^execute_command:/, '')}</code>
+                  </button>
+                )}
                 <button className="btn" onClick={onDeny}>Deny</button>
                 <span className="hint" style={{ marginLeft: 'auto' }}>Mode: {MODES.find((x) => x.id === mode)?.label}</span>
               </div>
@@ -314,6 +446,7 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
       </div>
 
       <div className="composer">
+        {todos.length > 0 && <TodoList todos={todos} />}
         {menu.length > 0 && (
           <div className="slashmenu" role="listbox" aria-label="Commands and skills">
             {menu.map((item, i) => (
@@ -326,8 +459,18 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
             ))}
           </div>
         )}
-        <div className={`box ${busy ? 'busy' : ''}`}>
-          <textarea ref={ta} value={input} onChange={(e) => setInput(e.target.value)}
+        <div className={`box ${busy ? 'busy' : ''}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+          {images.length > 0 && (
+            <div className="thumbs" aria-label="Attached images">
+              {images.map((im, i) => (
+                <span key={i} className="thumb">
+                  <img src={`data:${im.mime};base64,${im.data}`} alt={im.name} />
+                  <button aria-label={`Remove ${im.name}`} onClick={() => setImages((cur) => cur.filter((_, j) => j !== i))}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea ref={ta} value={input} onChange={(e) => setInput(e.target.value)} onPaste={onPaste}
             placeholder={empty ? 'Describe a change, or type / for skills' : 'Reply, or ask for follow-up changes'}
             aria-label="Message the agent" rows={2} onKeyDown={onKey} />
           <div className="bar">

@@ -588,3 +588,27 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(16px); }
 .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 0.8: subagent rows, diffs, task list, plan card, image attachments, rewind */
+.toolrow.sub { margin-left: 26px; }
+.toolrow pre.difflines span { display: block; white-space: pre-wrap; }
+.todos { border: 1px solid var(--border); border-radius: 12px; background: var(--bg2); margin: 0 0 8px; padding: 6px 12px; font-size: 12.5px; }
+.todohead { background: none; border: 0; color: var(--text); font-weight: 600; padding: 2px 0; cursor: pointer; display: flex; gap: 8px; width: 100%; }
+.todos ul { list-style: none; margin: 4px 0 2px; padding: 0; max-height: 160px; overflow: auto; }
+.todos li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.todos li.completed span:last-child { color: var(--muted); text-decoration: line-through; }
+.todos li.in_progress span:last-child { color: var(--text); font-weight: 600; }
+.tbox { flex: none; width: 14px; height: 14px; border: 1px solid var(--faint); border-radius: 4px; font-size: 10px; line-height: 12px; text-align: center; color: var(--accent2); }
+.todos li.in_progress .tbox { border-color: var(--accent); color: var(--accent); }
+.plancard { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.planbody { max-height: 340px; overflow: auto; margin: 6px 0 12px; }
+.thumbs { display: flex; gap: 8px; padding: 10px 12px 0; flex-wrap: wrap; }
+.thumb { position: relative; }
+.thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.thumb button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg3); color: var(--text); font-size: 12px; line-height: 14px; cursor: pointer; padding: 0; }
+.userpill { align-items: center; gap: 6px; }
+.userpill .rewind { opacity: 0; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
+.msg.user:hover .rewind, .userpill .rewind:focus-visible { opacity: 1; }
+.userpill .rewind:hover { color: var(--text); background: var(--bg3); }
+.linkbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0 0 4px; font-size: 13px; }
+.linkbtn:hover { color: var(--danger); }

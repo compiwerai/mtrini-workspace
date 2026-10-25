@@ -6,7 +6,7 @@ export type UISettings = {
   minimap: boolean;
   wordWrap: boolean;
   terminalFontSize: number;
-  permissionMode: 'ask' | 'auto' | 'readonly';
+  permissionMode: 'ask' | 'auto' | 'readonly' | 'plan';
   uiFontSize: number;
   contentWidth: 'normal' | 'wide';
   motion: 'system' | 'reduce';

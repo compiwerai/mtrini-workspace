@@ -381,15 +381,29 @@ def test_effort_payloads():
             import json as _j
 
             assert _j.loads(route.calls[0].request.content)["reasoning_effort"] == "high"
-        with respx.mock(base_url="https://api.anthropic.com") as r2:
-            route = r2.post("/v1/messages").mock(
-                return_value=httpx.Response(200, json={"content": [{"type": "text", "text": "hi"}]}))
-            await AnthropicProvider(api_key="x").chat("claude-x", msgs, effort="max")
-            import json as _j
+        sent = []
 
-            body = _j.loads(route.calls[0].request.content)
-            assert body["thinking"] == {"type": "enabled", "budget_tokens": 32000}
-            assert body["max_tokens"] >= 33024
+        async def _fake_send(client, params):
+            from types import SimpleNamespace
+
+            sent.append(params)
+            block = SimpleNamespace(model_dump=lambda **k: {"type": "text", "text": "hi"})
+            return SimpleNamespace(content=[block], stop_reason="end_turn",
+                                   usage=SimpleNamespace(input_tokens=1, output_tokens=1))
+
+        orig_send = AnthropicProvider.__dict__["_send"]
+        AnthropicProvider._send = staticmethod(_fake_send)
+        try:
+            await AnthropicProvider(api_key="x").chat("claude-opus-5-5", msgs, effort="max")
+            assert sent[-1]["thinking"] == {"type": "adaptive"}
+            assert sent[-1]["output_config"] == {"effort": "max"}
+            await AnthropicProvider(api_key="x").chat("claude-haiku-4-5", msgs, effort="max")
+            assert sent[-1]["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+            assert sent[-1]["max_tokens"] >= 33024
+            await AnthropicProvider(api_key="x").chat("claude-sonnet-5-5", msgs, effort="off")
+            assert "thinking" not in sent[-1] and "output_config" not in sent[-1]
+        finally:
+            AnthropicProvider._send = orig_send
         with respx.mock(base_url="https://generativelanguage.googleapis.com") as r3:
             route = r3.post(url__regex=r".*generateContent.*").mock(
                 return_value=httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "hi"}]}}]}))
