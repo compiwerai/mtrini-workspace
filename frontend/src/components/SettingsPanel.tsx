@@ -33,6 +33,62 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
+/** Agent extras: web search provider and always-allow rules. */
+function AgentExtras({ onToast }: { onToast: (s: string) => void }) {
+  const [ws, setWs] = useState<{ provider: string; baseUrl: string; hasKey: boolean }>({ provider: '', baseUrl: '', hasKey: false });
+  const [wsKey, setWsKey] = useState('');
+  const [rules, setRules] = useState<string[]>([]);
+  useEffect(() => {
+    api.webSearch().then(setWs).catch(() => {});
+    api.permissions().then((r) => setRules(r.allow || [])).catch(() => {});
+  }, []);
+  const saveWs = async () => {
+    try {
+      setWs(await api.saveWebSearch({ provider: ws.provider, baseUrl: ws.baseUrl, apiKey: wsKey || undefined }));
+      setWsKey('');
+      onToast('Web search saved');
+    } catch (e: any) { onToast(`Could not save: ${e.message}`); }
+  };
+  const removeRule = async (r: string) => {
+    try { setRules((await api.savePermissions(rules.filter((x) => x !== r))).allow); } catch (e: any) { onToast(`Could not save: ${e.message}`); }
+  };
+  return (
+    <>
+      <div className="label-caps" style={{ marginTop: 18 }}>Web search</div>
+      <p className="hint">Lets the agent search the web. Pick a service and add its key (stored in your system keychain), or point it at your own SearXNG.</p>
+      <Row title="Search service">
+        <select className="t" aria-label="Search service" value={ws.provider} onChange={(e) => setWs({ ...ws, provider: e.target.value })}>
+          <option value="">Off</option>
+          <option value="brave">Brave Search API</option>
+          <option value="tavily">Tavily</option>
+          <option value="searxng">SearXNG (self-hosted)</option>
+        </select>
+      </Row>
+      {(ws.provider === 'brave' || ws.provider === 'tavily') && (
+        <Row title="API key" hint={ws.hasKey ? 'A key is saved. Type a new one to replace it.' : undefined}>
+          <input className="t" type="password" aria-label="Search API key" value={wsKey} onChange={(e) => setWsKey(e.target.value)} placeholder={ws.hasKey ? '••••••••' : 'paste key'} />
+        </Row>
+      )}
+      {ws.provider === 'searxng' && (
+        <Row title="SearXNG URL">
+          <input className="t" aria-label="SearXNG URL" value={ws.baseUrl} onChange={(e) => setWs({ ...ws, baseUrl: e.target.value })} placeholder="http://localhost:8888" />
+        </Row>
+      )}
+      <button className="btn" onClick={saveWs}>Save web search</button>
+
+      <div className="label-caps" style={{ marginTop: 18 }}>Always allowed</div>
+      <p className="hint">Added with "Always allow" on an approval card; stored in this project's .mtrini/permissions.json. Commands the safety check marks destructive still ask.</p>
+      {rules.length === 0 ? <p className="hint">Nothing yet.</p> : (
+        <div className="chips">
+          {rules.map((r) => (
+            <span key={r} className="tag">{r} <button className="linkbtn" aria-label={`Remove ${r}`} onClick={() => removeRule(r)}>×</button></span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="switch">
@@ -181,9 +237,10 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
               <option value="ask">Ask before edits</option>
               <option value="auto">Auto-accept edits</option>
               <option value="readonly">Read-only</option>
+              <option value="plan">Plan mode</option>
             </select>
           </Row>
-          <p className="hint">Ask confirms every write, command and delete. Auto runs without asking, so use it only in projects you trust.</p>
+          <p className="hint">Ask confirms every write, command and delete. Auto runs without asking, so use it only in projects you trust. Plan mode researches read-only and shows you a plan before changing anything.</p>
           <Row title="Use skills" hint="Give the agent your skill list, and a skill's full instructions when you type /name.">
             <Switch label="Use skills" checked={ui.useSkills} onChange={(v) => set({ useSkills: v })} />
           </Row>
@@ -194,6 +251,7 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
             <input type="range" min={10} max={18} value={ui.terminalFontSize} aria-label="Terminal font size"
               onChange={(e) => set({ terminalFontSize: Number(e.target.value) })} />
           </Row>
+          <AgentExtras onToast={onToast} />
           <div style={{ marginTop: 16 }}>
             <div className="label-caps">Runtime status</div>
             <pre style={{ fontSize: 11 }}>{rt ? JSON.stringify(rt, null, 1) : '…'}</pre>

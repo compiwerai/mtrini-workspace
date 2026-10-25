@@ -20,7 +20,8 @@ Open-source AI development environment by **Compiwer AI** — *Building AI For E
   the agent, inspect schemas and run calls manually
 - Mtrini Images: generate pictures with image models from any image-capable
   provider (OpenAI, Together, Fireworks, xAI, Gemini, Hugging Face, SD WebUI…)
-- Real tool-using coding agent (inspect → plan → change → test → verify)
+- Real tool-using coding agent (inspect → plan → change → test → verify) with plan mode,
+  task lists, diffs, rewind, subagents, hooks, web search and a headless CLI
 - Monaco editor, terminal, Git, skills, specialized agents, model routing
 - Local-first, no telemetry, Apache-2.0
 
@@ -42,12 +43,12 @@ No Python/Node needed at runtime:
 
 ```powershell
 .\scripts\build-exe.ps1        # builds frontend, exe -> dist\MtriniWorkspace\
-iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.7.2.exe
+iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.0.exe
 ```
 
 Run `MtriniWorkspace.exe` (or install the Setup): it serves the API **and**
 the UI from one process and opens `http://127.0.0.1:8787` in your browser.
-Silent install: `MtriniWorkspace-Setup-0.7.2.exe /SILENT`.
+Silent install: `MtriniWorkspace-Setup-0.8.0.exe /SILENT`.
 
 ## Hugging Face → run locally (tested flow)
 
@@ -134,11 +135,48 @@ Each stores: name, API key (keychain), base URL, default model. Model selector i
 
 ## Agent
 
-Agent panel (Ctrl+L): natural-language requests, live activity timeline
-(planning → inspect → search → read → edit → terminal → tests), permission prompts
-(`Allow once / Deny`) for write/execute/network/destructive operations.
-Slash commands: `/help /status /clear /git /test /skills /agents /permissions`.
+The agent works in a loop: it reads, plans, edits, runs commands and tests, and checks its
+work, with a live timeline of every step. Each session keeps its full tool history in
+`.mtrini/sessions/`, so an approval continues the same turn instead of starting over.
+
+- **Permission modes:** Ask before edits, Auto-accept edits, Read-only, and **Plan mode**
+  (researches read-only, then shows a plan you approve, send back with notes, or approve
+  straight into auto mode).
+- **Approvals:** Allow once, Deny, or **Always allow**. Rules live in
+  `.mtrini/permissions.json`; shell rules cover one command prefix (`npm test`) and never a
+  chain like `npm test && …`, and commands flagged destructive always ask.
+- **Task list:** for longer jobs the agent keeps a checklist above the composer.
+- **Diffs:** every file write and edit shows a colored diff in the timeline.
+- **Rewind:** the ↺ button on any of your messages puts back the files the agent changed
+  from that point on and removes those turns. Changes made by shell commands are not undone.
+- **Subagents:** the agent can hand a self-contained job to a subagent with its own context.
+  Subagents can read and search, and only change files in auto mode. Define project agents in
+  `.mtrini/agents/<name>.md`.
+- **Context compaction:** near the model's context limit, older turns are summarized
+  automatically; `/compact` does it on demand.
+- **Hooks:** `.mtrini/hooks.json` runs your commands on `PreToolUse` (exit code 2 blocks the
+  call), `PostToolUse`, `UserPromptSubmit` and `Stop`. Hooks stay off until you trust that
+  exact file (trust is stored outside the project, so a cloned repo can't switch them on).
+- **Web:** `web_fetch` reads pages; `web_search` uses Brave, Tavily or your own SearXNG
+  (Settings → Agent → Web search).
+- **Images:** paste or drop screenshots into the composer (vision models).
+- **Providers:** tool calling works with OpenAI-compatible servers, Anthropic (official SDK,
+  adaptive thinking with effort levels on current Claude models) and Gemini (function calling).
+
+Slash commands: `/help /clear /compact /init /agents /permissions /skills /mcp /settings`.
 Project memory: `.mtrini/instructions.md`, `.mtrini/skills/*/SKILL.md`, `.mtrini/agents/*.md`.
+
+### Headless (CLI)
+
+```bash
+mtrini -p "fix the failing test"                 # one agent turn in the terminal
+echo "explain main.py" | mtrini -p -             # prompt from stdin
+mtrini -p "update deps" --mode auto --json       # no approvals, JSON events (CI)
+mtrini -p "now add tests" --thread cli-1a2b3c4d  # continue a session
+```
+
+In a terminal, approvals are asked inline (`y`es / `a`lways / `n`o). Without a terminal, a
+step that needs approval stops with exit code 2.
 
 ## Skills
 
@@ -166,7 +204,9 @@ CI (GitHub Actions): lint + typecheck + backend tests + frontend tests + build, 
 | GET | `/api/hf/search` `/api/hf/details` `/api/hf/whoami` |
 | POST | `/api/hf/download` |
 | GET | `/api/project` `/api/skills/{name}` `/api/git/status` `/api/git/diff` |
-| POST | `/api/chat` (SSE) `/api/agent` (SSE) `/api/tools/execute` `/api/terminal/exec` |
+| POST | `/api/chat` (SSE) `/api/agent` (SSE; `threadId`, `resume`, `images`) `/api/tools/execute` `/api/terminal/exec` |
+| GET/POST | `/api/agent/session/{id}` `/api/agent/rewind` `/api/agent/compact` |
+| GET/POST | `/api/hooks` `/api/hooks/trust` `/api/permissions` `/api/websearch` |
 
 Full reference: `docs/API.md`.
 

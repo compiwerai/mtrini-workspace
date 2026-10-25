@@ -26,10 +26,26 @@ MCP: `GET/POST /api/mcp/servers` (`GET` takes `?format=claude|mtrini`), `PATCH/D
 Images: `GET /api/images/support`, `POST /api/images/generate {provider, model, prompt, size}`,
   `GET /api/images`, `GET /api/images/{id}/file`, `DELETE /api/images/{id}`
 Chat (SSE): `POST /api/chat {provider, model, messages[], effort?}`
-Agent (SSE): `POST /api/agent {provider, model, message, history[], permissionMode, effort?}`
-  `effort` is one of off|low|high|xhigh|max (default off): native reasoning controls
-  on OpenAI (`reasoning_effort`), Anthropic (`thinking` budget), Gemini
-  (`thinkingBudget`), Azure, plus a deeper agent tool loop (12→60 steps).
-  events: status, assistant_delta, tool_start, tool_result, permission_request, done, error.
-  Approved-tool one-shot: same endpoint with `{approve: {tool, args}}`.
+Agent (SSE): `POST /api/agent {provider, model, message, threadId?, permissionMode, effort?, images?[], resume?, history?[]}`
+  `threadId` keeps the agent's session (tool calls and results, todos, a paused approval) in
+  `.mtrini/sessions/<threadId>.json`; turns are also recorded in the thread file.
+  `permissionMode`: ask | auto | readonly | plan. `images`: `[{mime, data}]` (base64, up to 8).
+  `effort` is one of off|low|medium|high|xhigh|max (default off): native reasoning on OpenAI
+  (`reasoning_effort`), Anthropic (adaptive thinking + `output_config.effort` on current models,
+  a thinking budget on older ones), Gemini (`thinkingBudget`), Azure, plus a deeper loop (12→60 steps).
+  events: status, turn, assistant_delta, tool_start, tool_result, permission_request, plan, todos,
+  mode, compacted, subagent, hooks_untrusted, done, error. Tool events carry the call `id`;
+  subagent tool events carry `parent`.
+  A turn that needs an answer ends with `done` + `pendingApproval` or `pendingPlan`. Answer it with
+  `{threadId, resume: {decision}}`: `allow | always | deny` for tools (`feedback` optional),
+  `approve` (with `mode: ask|auto`) or `reject` (with `feedback`) for plans. The same loop continues.
+  Legacy one-shot approval without `threadId`: `{approve: {tool, args}}`.
+Agent session: `GET /api/agent/session/{threadId}` (todos, mode, pending card, checkpoints),
+  `POST /api/agent/rewind {threadId, turn, files?, conversation?}` (restores files changed by file
+  tools from that turn on, drops those turns, returns the turn's prompt),
+  `POST /api/agent/compact {threadId, provider, model}`
+Hooks: `GET /api/hooks` (present, trusted, hooks), `POST /api/hooks/trust`
+Permission rules: `GET /api/permissions`, `POST /api/permissions {allow: [...]}`
+Web search: `GET /api/websearch`, `POST /api/websearch {provider: brave|tavily|searxng|"", apiKey?, baseUrl?}`
+CLI: `mtrini -p "<prompt>" [path] [--provider] [--model] [--mode] [--effort] [--thread] [--json]`
 Terminal: `POST /api/terminal/exec {command, cwd?, timeout?}`

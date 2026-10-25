@@ -20,8 +20,20 @@ class ModelInfo:
 class ChatMessage:
     role: str  # system | user | assistant | tool
     content: str
-    tool_calls: list[dict[str, Any]] | None = None
-    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None  # assistant: [{id, name, arguments}]
+    tool_call_id: str | None = None  # tool: id of the call this answers
+    name: str | None = None  # tool: name of the tool that ran
+    images: list[dict[str, str]] | None = None  # user: [{mime, data(base64)}]
+    raw: Any = None  # assistant: provider-native content (Anthropic blocks, Gemini parts)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ChatMessage:
+        return cls(role=d.get("role", "user"), content=str(d.get("content") or ""),
+                   tool_calls=d.get("tool_calls"), tool_call_id=d.get("tool_call_id"),
+                   name=d.get("name"), images=d.get("images"), raw=d.get("raw"))
 
 
 class ModelProvider(Protocol):

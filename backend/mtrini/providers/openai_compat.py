@@ -40,7 +40,12 @@ class OpenAICompatibleProvider:
     def _payload(self, model: str, messages: list[ChatMessage], tools: list[dict] | None, stream: bool, effort: str = "off") -> dict:
         msgs = []
         for m in messages:
-            d: dict[str, Any] = {"role": m.role, "content": m.content}
+            content: Any = m.content
+            if m.images and m.role == "user":
+                content = [{"type": "text", "text": m.content}] + [
+                    {"type": "image_url", "image_url": {"url": f"data:{im['mime']};base64,{im['data']}"}}
+                    for im in m.images]
+            d: dict[str, Any] = {"role": m.role, "content": content}
             if m.tool_calls:
                 d["tool_calls"] = [{"id": t.get("id"), "type": "function",
                                     "function": {"name": t.get("name"), "arguments": t.get("arguments", "{}")}}
@@ -108,7 +113,7 @@ class OpenAICompatibleProvider:
         return True
 
     def supports_vision(self) -> bool:
-        return False
+        return True  # sent as image_url parts; text-only models reject them with a clear error
 
     def supports_streaming(self) -> bool:
         return True

@@ -51,7 +51,7 @@ def _h_write(root: Path, a: dict[str, Any]):
 
 def _h_edit(root: Path, a: dict[str, Any]):
     p = resolve_inside(root, a["path"])
-    text = p.read_text(encoding="utf-8")
+    text = before = p.read_text(encoding="utf-8")
     old, new = a["old"], a["new"]
     if old not in text:
         raise ValueError("oldString not found")
@@ -62,7 +62,8 @@ def _h_edit(root: Path, a: dict[str, Any]):
             raise ValueError("oldString matches multiple times; use replaceAll or more context")
         text = text.replace(old, new, 1)
     p.write_text(text, encoding="utf-8")
-    return {"path": a["path"], "ok": True}
+    diff = list(difflib.unified_diff(before.splitlines(), text.splitlines(), lineterm=""))[:200]
+    return {"path": a["path"], "ok": True, "diff": diff}
 
 
 def _h_delete(root: Path, a: dict[str, Any]):

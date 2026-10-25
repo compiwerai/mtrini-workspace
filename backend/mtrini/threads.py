@@ -52,12 +52,18 @@ def get_thread(root: Path, tid: str) -> dict[str, Any]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def append_message(root: Path, tid: str, role: str, content: str) -> dict[str, Any]:
+def append_message(root: Path, tid: str, role: str, content: str, **extra: Any) -> dict[str, Any]:
     data = get_thread(root, tid)
-    data["messages"].append({"role": role, "content": content, "ts": int(time.time())})
+    data["messages"].append({"role": role, "content": content, "ts": int(time.time()),
+                             **{k: v for k, v in extra.items() if v is not None}})
     data["updated"] = int(time.time())
     _tid_path(root, tid).write_text(json.dumps(data, indent=2), encoding="utf-8")
     return data
+
+
+def save_thread(root: Path, data: dict[str, Any]) -> None:
+    data["updated"] = int(time.time())
+    _tid_path(root, data["id"]).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def delete_thread(root: Path, tid: str) -> bool:
