@@ -46,4 +46,4 @@ try {
 if (-not $healthy) { throw "Smoke test failed: the app never answered on http://localhost:8787/api/health" }
 
 Write-Host "Done. App: dist\MtriniWorkspace\MtriniWorkspace.exe"
-Write-Host "Setup: iscc scripts\setup.iss  -> installer\MtriniWorkspace-Setup-0.7.1.exe"
+Write-Host "Setup: iscc scripts\setup.iss  -> installer\MtriniWorkspace-Setup-0.7.2.exe"
