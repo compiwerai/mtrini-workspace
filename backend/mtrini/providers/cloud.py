@@ -37,8 +37,17 @@ class OpenAIProvider(_CloudBase):
 class OpenRouterProvider(_CloudBase):
     name = "openrouter"
 
+    # App attribution: OpenRouter lists Mtrini Workspace in its public app rankings.
+    # Names the app only; nothing about the user, project or prompts.
+    APP_URL = "https://github.com/compiwerai/mtrini-workspace"
+    APP_TITLE = "Mtrini Workspace"
+
     def __init__(self, api_key: str = "", **kw: Any):
         super().__init__(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+
+    def _headers(self) -> dict[str, str]:
+        return {**super()._headers(), "HTTP-Referer": self.APP_URL,
+                "X-OpenRouter-Title": self.APP_TITLE, "X-Title": self.APP_TITLE}
 
     def curated(self) -> list[str]:
         return ["meta-llama/llama-3.1-70b-instruct", "qwen/qwen-2.5-coder-32b-instruct",

@@ -81,6 +81,33 @@ def test_provider_factory(tmp_path):
         build_provider("mock", tmp_path)
 
 
+def test_openrouter_app_attribution(monkeypatch):
+    import asyncio
+
+    import httpx
+
+    from mtrini.providers import ChatMessage
+    from mtrini.providers.cloud import GroqProvider, OpenRouterProvider
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    for provider in (OpenRouterProvider(api_key="sk-test"), GroqProvider(api_key="sk-test")):
+        asyncio.run(provider.chat("m", [ChatMessage(role="user", content="hi")]))
+    openrouter, groq = seen
+    # OpenRouter is told which app is calling (for its app rankings), alongside the user's key.
+    assert openrouter.headers["HTTP-Referer"] == "https://github.com/compiwerai/mtrini-workspace"
+    assert openrouter.headers["X-OpenRouter-Title"] == "Mtrini Workspace"
+    assert openrouter.headers["Authorization"] == "Bearer sk-test"
+    # Other providers get no attribution headers.
+    assert "HTTP-Referer" not in groq.headers and "X-OpenRouter-Title" not in groq.headers
+
+
 def test_health_and_project(tmp_path, monkeypatch):
     monkeypatch.setenv("MTRINI_WORKSPACE", str(tmp_path))
     c = TestClient(app)
