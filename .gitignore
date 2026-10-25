@@ -31,6 +31,8 @@ config.local.json
 
 # Model weights / downloads (large, local only)
 models/
+# ...but not the backend's models package (source code)
+!backend/mtrini/models/
 *.gguf
 *.safetensors
 *.bin
