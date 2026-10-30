@@ -1,10 +1,12 @@
 """Provider registry + factory. Agent code never imports a concrete provider."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from . import cloud as _cloud
+from . import free as _free
 from . import gemini_anthropic as _ga
 from . import huggingface as _hf
 from . import openai_compat as _compat
@@ -70,6 +72,10 @@ def build_provider(name: str, root: Path, settings: dict[str, Any] | None = None
         return _ga.AnthropicProvider(api_key=get_secret(root, "mtrini-anthropic", "apiKey") or "")
     if name == "huggingface":
         return _hf.HuggingFaceProvider(token=get_secret(root, "mtrini-hf", "token") or "")
+    if name == "heabsy":
+        return _free.HeabsyProvider(api_key=get_secret(root, "mtrini-heabsy", "apiKey") or "")
+    if name == "free":
+        return _free.FreeProvider()
     raise ValueError(f"Unknown provider: {name}")
 
 
@@ -99,10 +105,32 @@ PROVIDER_META = [
     {"id": "sambanova", "label": "SambaNova", "needsKey": True},
     {"id": "novita", "label": "Novita", "needsKey": True},
     {"id": "siliconflow", "label": "SiliconFlow", "needsKey": True},
-    {"id": "sdwebui", "label": "Stable Diffusion WebUI (local images)", "needsKey": False,
+    {"id": "sdwebui", "label": "Stable Diffusion WebUI (local images)", "needsKey": False, "kind": "image",
      "fields": ["baseUrl", "model"], "defaultBaseUrl": "http://127.0.0.1:7860"},
     {"id": "azure", "label": "Azure OpenAI", "needsKey": True,
      "fields": ["baseUrl", "model", "apiVersion"],
      "hint": "Base URL = resource endpoint, Model = deployment name"},
     {"id": "huggingface", "label": "Hugging Face", "needsKey": True, "token": True},
+    {"id": "heabsy", "label": "Heabsy (EU)", "needsKey": True,
+     "hint": "Open-weight models on EU hardware. Keys: platform.heabsy.com"},
 ]
+
+# Shown first, only when the free-model relay is configured.
+FREE_META = {"id": "free", "label": _free.FREE_LABEL, "needsKey": False, "free": True,
+             "defaultModel": _free.FREE_MODEL, "upgradeUrl": _free.HEABSY_UPGRADE_URL}
+
+
+def supports_reasoning(provider: str, model: str) -> bool:
+    """Whether Mtrini sends a native thinking control for this model (the effort picker shows only then)."""
+    m = (model or "").lower()
+    if provider in ("openai", "azure"):
+        return bool(re.match(r"(o\d|gpt-5)", m))
+    if provider == "anthropic":
+        return not (m.startswith("claude-3") and not m.startswith("claude-3-7"))
+    if provider == "gemini":
+        return bool(re.search(r"gemini-(2\.5|[3-9])", m))
+    return False
+
+
+def provider_meta() -> list[dict[str, Any]]:
+    return ([FREE_META] if _free.free_relay_url() else []) + PROVIDER_META

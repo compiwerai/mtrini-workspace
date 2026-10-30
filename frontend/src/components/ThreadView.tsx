@@ -43,9 +43,15 @@ export type Todo = { content: string; status: 'pending' | 'in_progress' | 'compl
 export type Img = { mime: string; data: string; name: string };
 export type PlanDecision = { decision: 'approve' | 'reject'; mode?: 'ask' | 'auto'; feedback?: string };
 
-const FALLBACK_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom', 'openai', 'anthropic', 'gemini',
-  'openrouter', 'mistral', 'deepseek', 'groq', 'together', 'fireworks', 'xai', 'cohere', 'azure', 'huggingface',
-  'cerebras', 'deepinfra', 'nebius', 'sambanova', 'novita', 'siliconflow', 'sdwebui'];
+const CUSTOM = '__custom';
+
+/** The last provider and model you chatted with, kept across restarts. */
+function savedChoice(): { prov: string; mid: string } {
+  try {
+    const v = JSON.parse(localStorage.getItem('mtrini.chatModel') || '{}');
+    return { prov: String(v.prov || ''), mid: String(v.mid || '') };
+  } catch { return { prov: '', mid: '' }; }
+}
 
 const MODES: { id: UISettings['permissionMode']; label: string }[] = [
   { id: 'ask', label: 'Ask before edits' },
@@ -234,13 +240,16 @@ type Pending = { tool: string; args: any; rule?: string; mcp?: { server: string;
 
 export default function ThreadView({ messages, busy, status, pending, files, branch, setModel, onSend, onCommand, onStop, onApprove, onDeny,
   needsSetup, onGoSettings, threadWs, onPickThreadFolder, effort, setEffort, project, seed,
-  todos = [], plan = null, onPlan = () => {}, hooksUntrusted = false, onTrustHooks = () => {}, onRewind }: {
+  todos = [], plan = null, onPlan = () => {}, hooksUntrusted = false, onTrustHooks = () => {}, onRewind,
+  onReasoning = () => {} }: {
   messages: Msg[]; busy: boolean; status: string; pending: Pending;
   files: string[]; branch: string; model: string; setModel: (m: string) => void;
   onSend: (text: string, images?: Img[]) => void; onCommand: (name: string) => void;
   onStop: () => void; onApprove: (always?: boolean) => void; onDeny: () => void;
   todos?: Todo[]; plan?: string | null; onPlan?: (d: PlanDecision) => void;
   hooksUntrusted?: boolean; onTrustHooks?: () => void; onRewind?: (turn: number) => void;
+  /** Whether the selected model takes a thinking level (the effort picker only shows then). */
+  onReasoning?: (supported: boolean) => void;
   needsSetup: boolean; onGoSettings: () => void;
   threadWs: string | null; onPickThreadFolder: () => void;
   effort: string; setEffort: (e: string) => void;
@@ -248,9 +257,10 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
 }) {
   const [input, setInput] = useState('');
   const [providers, setProviders] = useState<any[]>([]);
-  const [prov, setProv] = useState('local');
+  const [prov, setProv] = useState(() => savedChoice().prov);
   const [models, setModels] = useState<any[]>([]);
-  const [mid, setMid] = useState('');
+  const [mid, setMid] = useState(() => savedChoice().mid);
+  const [customModel, setCustomModel] = useState(false);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [menuIndex, setMenuIndex] = useState(0);
   const [mode, setMode] = useState<UISettings['permissionMode']>(loadSettings().permissionMode);
@@ -259,13 +269,48 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
   const box = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { api.providers().then((p) => setProviders(p.providers || [])).catch(() => {}); }, []);
+  // Only providers you connected (a saved key, or a local server you set up) can be picked to chat.
+  const chatProviders = useMemo(() => providers.filter((p) => p.configured && p.kind !== 'image'), [providers]);
+  useEffect(() => {
+    const load = () => api.providers().then((p) => setProviders(p.providers || [])).catch(() => {});
+    load();
+    window.addEventListener('mtrini:providers-changed', load);
+    return () => window.removeEventListener('mtrini:providers-changed', load);
+  }, []);
+  useEffect(() => {
+    // The saved provider was disconnected (or nothing is saved yet): fall back to the first connected one.
+    if (!providers.length || chatProviders.some((p) => p.id === prov)) return;
+    const next = chatProviders[0];
+    setProv(next?.id || '');
+    setMid(next?.defaultModel || '');
+    setCustomModel(false);
+  }, [chatProviders]); // eslint-disable-line
   useEffect(() => { api.skills().then((s) => setSkills(s.skills || [])).catch(() => {}); }, []);
   useEffect(() => {
-    api.models(prov).then((m) => setModels(m.models || [])).catch(() => setModels([]));
-    setModel(`${prov}:${mid}`);
+    if (!prov) { setModels([]); return; }
+    let live = true;
+    api.models(prov).then((m) => {
+      if (!live) return;
+      const list = m.models || [];
+      setModels(list);
+      if (!mid && list.length) setMid(list[0].id);
+      else if (mid && !list.some((x: any) => x.id === mid)) setCustomModel(true);
+      else if (!list.length) setCustomModel(true);
+    }).catch(() => { if (live) { setModels([]); setCustomModel(true); } });
+    return () => { live = false; };
   }, [prov]); // eslint-disable-line
-  useEffect(() => { setModel(`${prov}:${mid}`); }, [mid]); // eslint-disable-line
+  useEffect(() => {
+    setModel(`${prov}:${mid}`);
+    if (prov) { try { localStorage.setItem('mtrini.chatModel', JSON.stringify({ prov, mid })); } catch { /* private mode */ } }
+  }, [prov, mid]); // eslint-disable-line
+  const current = models.find((m) => m.id === mid);
+  const reasoning = !!current?.capabilities?.reasoning;
+  useEffect(() => { onReasoning(reasoning); }, [reasoning]); // eslint-disable-line
+  const pickProvider = (id: string) => {
+    setProv(id);
+    setMid(chatProviders.find((p) => p.id === id)?.defaultModel || '');
+    setCustomModel(false);
+  };
   useEffect(() => { try { box.current?.scrollTo(0, 1e9); } catch { /* jsdom */ } }, [messages, pending, status, plan]);
   useEffect(() => {
     // The plan card can switch the mode (approve → auto/ask): follow the app's setting.
@@ -348,6 +393,12 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
             <img src="/logo.png" alt="" width={44} height={44} className="herologo" />
             <h1>What should we build{project ? ` in ${project}` : ''}?</h1>
             <p className="hint">The agent inspects your project, edits files, runs tests and shows every change. Type <code>/</code> for commands and skills.</p>
+            {prov === 'free' && (
+              <p className="hint freenote">
+                You're on the free model: Qwen3.8 27B, sponsored by <a href="https://heabsy.com" target="_blank" rel="noreferrer">Heabsy</a>.
+                It has a daily limit; connect any provider in <a onClick={onGoSettings}>Settings</a> for more.
+              </p>
+            )}
             {needsSetup ? (
               <div className="card setup">
                 <strong>Connect a model to start</strong>
@@ -478,19 +529,37 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
               {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <span className="grow" />
-            <select className="pillselect" value={prov} onChange={(e) => setProv(e.target.value)} aria-label="Provider" data-testid="provider-select">
-              {(providers.length ? providers : FALLBACK_PROVIDERS.map((id) => ({ id }))).map((p: any) => (
-                <option key={p.id} value={p.id}>{p.label || p.id}{p.configured ? ' ●' : ''}</option>
-              ))}
-            </select>
-            <input className="pillselect" value={mid} onChange={(e) => setMid(e.target.value)} list="mtrini-models" aria-label="Model" style={{ minWidth: 140 }} placeholder="model id" />
-            <datalist id="mtrini-models">{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
-            <select className={`pillselect${effort !== 'off' ? ' on' : ''}`} value={effort} onChange={(e) => setEffort(e.target.value)} aria-label="Thinking effort"
-              title="Thinking effort: native reasoning on OpenAI / Anthropic / Gemini / Azure, plus a deeper agent loop (Low 12 → Max 60 steps).">
-              {['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((e) => (
-                <option key={e} value={e}>{e === 'off' ? 'Think: off' : `Think: ${e}`}</option>
-              ))}
-            </select>
+            {chatProviders.length === 0 ? (
+              <button className="pillselect" onClick={onGoSettings} title="Add an API key or a local server in Settings → Providers">Connect a provider</button>
+            ) : (
+              <>
+                <select className="pillselect" value={prov} onChange={(e) => pickProvider(e.target.value)} aria-label="Provider" data-testid="provider-select">
+                  {chatProviders.map((p: any) => <option key={p.id} value={p.id}>{p.label || p.id}</option>)}
+                </select>
+                <select className="pillselect" aria-label="Model" style={{ maxWidth: 200 }}
+                  value={customModel || !current ? CUSTOM : mid}
+                  onChange={(e) => {
+                    if (e.target.value === CUSTOM) { setCustomModel(true); return; }
+                    setCustomModel(false);
+                    setMid(e.target.value);
+                  }}>
+                  {models.map((m) => <option key={m.id} value={m.id}>{m.label || m.id}</option>)}
+                  <option value={CUSTOM}>Other model id…</option>
+                </select>
+                {(customModel || !current) && (
+                  <input className="pillselect" value={mid} onChange={(e) => setMid(e.target.value.trim())} aria-label="Model id"
+                    style={{ minWidth: 130 }} placeholder="model id" />
+                )}
+              </>
+            )}
+            {reasoning && (
+              <select className={`pillselect${effort !== 'off' ? ' on' : ''}`} value={effort} onChange={(e) => setEffort(e.target.value)} aria-label="Thinking effort"
+                title="How long the model thinks before answering. Higher levels are slower and cost more, and give the agent more steps (Low 12 → Max 60).">
+                {['off', 'low', 'medium', 'high', 'xhigh', 'max'].map((e) => (
+                  <option key={e} value={e}>{e === 'off' ? 'Think: off' : `Think: ${e}`}</option>
+                ))}
+              </select>
+            )}
             {busy ? (
               <button className="sendbtn stop" onClick={onStop} aria-label="Stop">{I.stop()}</button>
             ) : (

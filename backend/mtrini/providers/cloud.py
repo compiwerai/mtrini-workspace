@@ -31,7 +31,7 @@ class OpenAIProvider(_CloudBase):
         return EFFORT_TO_OPENAI.get(effort)
 
     def curated(self) -> list[str]:
-        return ["gpt-4o", "gpt-4o-mini", "o1-mini"]
+        return ["gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini", "o4-mini"]
 
 
 class OpenRouterProvider(_CloudBase):

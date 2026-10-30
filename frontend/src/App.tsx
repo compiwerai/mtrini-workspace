@@ -58,6 +58,8 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
   const [model, setModel] = useState('local:');
+  // Thinking levels only go to models that support them (the picker hides otherwise).
+  const [reasoning, setReasoning] = useState(false);
   const [permMode, setPermMode] = useState(loadSettings().permissionMode);
   const [effort, setEffortState] = useState(() => localStorage.getItem('mtrini.effort') || loadSettings().defaultEffort);
   const setEffort = (e: string) => {
@@ -292,7 +294,7 @@ export default function App() {
     // Threads from before 0.8 have no agent session yet: send the visible transcript once.
     const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant').map((m) => ({ role: m.role, content: m.text }));
     await stream(tid as string, {
-      provider, model: mid, message: text, history, permissionMode: permMode, effort,
+      provider, model: mid, message: text, history, permissionMode: permMode, effort: reasoning ? effort : 'off',
       useSkills: loadSettings().useSkills, useInstructions: loadSettings().useInstructions,
       images: (images || []).map(({ mime, data }) => ({ mime, data })),
     });
@@ -302,7 +304,7 @@ export default function App() {
   const resume = (answer: Record<string, any>) => {
     if (!activeId) return;
     const { provider, mid } = splitModel();
-    return stream(activeId, { provider, model: mid, message: '', permissionMode: permMode, effort, resume: answer });
+    return stream(activeId, { provider, model: mid, message: '', permissionMode: permMode, effort: reasoning ? effort : 'off', resume: answer });
   };
 
   const approve = async (always = false) => {
@@ -435,6 +437,7 @@ export default function App() {
                 onApprove={approve} onDeny={deny}
                 todos={todos} plan={plan} onPlan={decidePlan}
                 hooksUntrusted={hooksUntrusted} onTrustHooks={trustHooks} onRewind={rewind}
+                onReasoning={setReasoning}
                 needsSetup={needsSetup} onGoSettings={() => setNav('settings')}
                 threadWs={threadWs} onPickThreadFolder={() => { setFolderMode('thread'); setPicking(true); }}
                 effort={effort} setEffort={setEffort} />

@@ -35,10 +35,9 @@ async def _headless(root: Path, provider: str, model: str, prompt: str, mode: st
                     thread: str | None, as_json: bool) -> int:
     from . import project as project_mod
     from .agent.engine import run_agent
-    from .config import load_config
+    from .config import provider_settings
 
-    settings = load_config(root).get(f"provider.{provider}", {})
-    settings = settings if isinstance(settings, dict) else {}
+    settings = provider_settings(root, provider)
     instr = project_mod.load_instructions(root)
     system_extra = f"Project instructions (.mtrini/instructions.md):\n{instr}" if instr else ""
     tid = thread or "cli-" + uuid.uuid4().hex[:10]

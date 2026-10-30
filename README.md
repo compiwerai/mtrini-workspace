@@ -10,6 +10,8 @@ Open-source AI development environment by **Compiwer AI** — *Building AI For E
 
 > Build software with local models, Hugging Face models, and configurable cloud/API models — through one model-agnostic agent.
 
+- A free built-in model, no key needed: Qwen3.8 27B, sponsored by [Heabsy](https://heabsy.com)
+  (daily limit; see `relay/` and PRIVACY.md)
 - Local AI (llama.cpp / Ollama / vLLM / any OpenAI-compatible server)
 - Hugging Face browser, auth, downloads
 - API providers: OpenAI, Anthropic, Gemini, OpenRouter, Mistral, DeepSeek, Groq,
@@ -43,12 +45,12 @@ No Python/Node needed at runtime:
 
 ```powershell
 .\scripts\build-exe.ps1        # builds frontend, exe -> dist\MtriniWorkspace\
-iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.0.exe
+iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.1.exe
 ```
 
 Run `MtriniWorkspace.exe` (or install the Setup): it serves the API **and**
 the UI from one process and opens `http://127.0.0.1:8787` in your browser.
-Silent install: `MtriniWorkspace-Setup-0.8.0.exe /SILENT`.
+Silent install: `MtriniWorkspace-Setup-0.8.1.exe /SILENT`.
 
 ## Hugging Face → run locally (tested flow)
 

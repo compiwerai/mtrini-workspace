@@ -11,7 +11,10 @@ CHARS_PER_TOKEN = 3.5
 IMAGE_TOKENS = 1500
 THRESHOLD = 0.7  # compact at 70% of the window
 DEFAULT_WINDOWS = {"anthropic": 1_000_000, "gemini": 1_000_000, "openai": 400_000, "openrouter": 128_000,
-                   "mistral": 128_000, "groq": 128_000, "deepseek": 128_000, "xai": 256_000}
+                   "mistral": 128_000, "groq": 128_000, "deepseek": 128_000, "xai": 256_000,
+                   "heabsy": 256_000,
+                   # The sponsored free model has a small daily budget: compact early to keep requests cheap.
+                   "free": 32_768}
 SUMMARY_PREFIX = "[Earlier conversation, summarized to save context]\n"
 
 SUMMARY_PROMPT = (
