@@ -32,6 +32,10 @@ Invoke-Tool { pyinstaller --noconfirm --clean --name MtriniWorkspace --noconsole
   backend\desktop.py }
 
 Write-Host "== 4/4 smoke test =="
+if (Get-NetTCPConnection -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue) {
+  throw "Port 8787 is in use (is Mtrini Workspace running?). Close it so the smoke test checks the new build."
+}
+$version = (Select-String -Path backend\mtrini\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
 $healthy = $false
 $p = Start-Process -FilePath ".\dist\MtriniWorkspace\MtriniWorkspace.exe" -PassThru
 try {
@@ -39,7 +43,7 @@ try {
     Start-Sleep -Seconds 4
     try {
       $h = Invoke-WebRequest -Uri "http://localhost:8787/api/health" -TimeoutSec 5
-      if ($h.StatusCode -eq 200) { Write-Host "OK: $($h.Content)"; $healthy = $true; break }
+      if ($h.StatusCode -eq 200 -and $h.Content -like "*`"$version`"*") { Write-Host "OK: $($h.Content)"; $healthy = $true; break }
     } catch {}
   }
 } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
