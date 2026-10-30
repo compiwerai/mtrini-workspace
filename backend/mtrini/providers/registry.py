@@ -76,6 +76,11 @@ def build_provider(name: str, root: Path, settings: dict[str, Any] | None = None
         return _free.HeabsyProvider(api_key=get_secret(root, "mtrini-heabsy", "apiKey") or "")
     if name == "free":
         return _free.FreeProvider()
+    if name.startswith("custom-"):  # one of your own OpenAI-compatible providers
+        if not s.get("baseUrl"):
+            raise ValueError(f"Custom provider {name} has no base URL. Edit it in Settings → Providers.")
+        return _compat.OpenAICompatibleProvider(base_url=s["baseUrl"],
+                                                api_key=get_secret(root, f"mtrini-{name}", "apiKey") or "")
     raise ValueError(f"Unknown provider: {name}")
 
 
@@ -133,4 +138,9 @@ def supports_reasoning(provider: str, model: str) -> bool:
 
 
 def provider_meta() -> list[dict[str, Any]]:
-    return ([FREE_META] if _free.free_relay_url() else []) + PROVIDER_META
+    from ..config import custom_providers
+
+    custom = [{"id": c["id"], "label": c["label"], "needsKey": False, "custom": True, "baseUrl": c["baseUrl"],
+               "fields": ["baseUrl", "model"], "hint": "Your own OpenAI-compatible provider; the key is optional"}
+              for c in custom_providers()]
+    return ([FREE_META] if _free.free_relay_url() else []) + PROVIDER_META + custom

@@ -33,6 +33,52 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
+/** Your own OpenAI-compatible providers: add as many as you like (OrcaRouter, Kojo, a friend's server...). */
+function CustomProviders({ providers, onToast, onChanged }: { providers: any[]; onToast: (s: string) => void; onChanged: () => void }) {
+  const [label, setLabel] = useState('');
+  const [url, setUrl] = useState('');
+  const [key, setKey] = useState('');
+  const custom = providers.filter((p) => p.custom);
+  const add = async () => {
+    try {
+      const p = await api.addCustomProvider({ label: label.trim(), baseUrl: url.trim(), apiKey: key || undefined });
+      setLabel(''); setUrl(''); setKey('');
+      onChanged();
+      onToast(`Added ${p.label}. Pick it in the composer.`);
+    } catch (e: any) {
+      const raw = String(e.message || e);
+      const detail = /"detail"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
+      onToast(`Could not add provider: ${detail || raw}`);
+    }
+  };
+  const remove = async (p: any) => {
+    if (!confirm(`Remove ${p.label}? Its saved key is deleted too.`)) return;
+    try { await api.deleteCustomProvider(p.id); onChanged(); onToast(`Removed ${p.label}`); } catch (e: any) { onToast(`Could not remove: ${e.message || e}`); }
+  };
+  return (
+    <>
+      <div className="label-caps" style={{ marginTop: 22 }}>Your own providers</div>
+      <p className="hint">Any service with an OpenAI-compatible API: add as many as you like. Each gets its own name, address and key.</p>
+      {custom.length > 0 && (
+        <div className="customlist">
+          {custom.map((p) => (
+            <div key={p.id} className="setrow">
+              <span><strong>{p.label}</strong> <span className="hint mono">{p.baseUrl}</span></span>
+              <button className="btn" onClick={() => remove(p)} aria-label={`Remove ${p.label}`}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="customadd">
+        <input className="t" aria-label="Provider name" placeholder="Name, e.g. OrcaRouter" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input className="t" aria-label="Provider base URL" placeholder="Base URL, e.g. https://api.example.com/v1" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <input className="t" type="password" aria-label="Provider API key" placeholder="API key (optional)" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} />
+        <button className="btn primary" disabled={!label.trim() || !url.trim()} onClick={add}>Add provider</button>
+      </div>
+    </>
+  );
+}
+
 /** Agent extras: web search provider and always-allow rules. */
 function AgentExtras({ onToast }: { onToast: (s: string) => void }) {
   const [ws, setWs] = useState<{ provider: string; baseUrl: string; hasKey: boolean }>({ provider: '', baseUrl: '', hasKey: false });
@@ -109,29 +155,37 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
   const [about, setAbout] = useState<any>(null);
   const [allProv, setAllProv] = useState<any[]>([]);
 
+  const loadProviders = () => api.providers().then((p) => setAllProv(p.providers || [])).catch(() => {});
   useEffect(() => {
     api.runtimes().then(setRt).catch(() => {});
     api.about().then(setAbout).catch(() => {});
-    api.providers().then((p) => setAllProv(p.providers || [])).catch(() => {});
+    loadProviders();
   }, []);
+  // Which fields a provider needs comes from the backend's list, so new providers get a key field automatically.
+  const meta = allProv.find((p) => p.id === prov);
+  const needKey = meta ? !!(meta.needsKey || meta.custom) : NEEDS_KEY.includes(prov);
+  const needUrl = meta ? !!(meta.custom || (meta.fields || []).includes('baseUrl')) : NEEDS_URL.includes(prov);
 
   const set = (patch: Partial<UISettings>) => setUi(saveSettings(patch));
 
   const pick = (p: string) => {
     setProv(p);
-    if (DEFAULT_URL[p]) setBaseUrl(DEFAULT_URL[p]);
+    const m = allProv.find((x) => x.id === p);
+    if (m?.custom) setBaseUrl(m.baseUrl || '');
+    else if (DEFAULT_URL[p]) setBaseUrl(DEFAULT_URL[p]);
   };
 
   const saveProvider = async () => {
     try {
       await api.configureProvider({
         provider: prov, apiKey: key || undefined,
-        baseUrl: NEEDS_URL.includes(prov) ? baseUrl : undefined,
+        baseUrl: needUrl ? baseUrl : undefined,
         apiVersion: prov === 'azure' ? apiVersion : undefined,
       });
       setKey('');
+      loadProviders();
       window.dispatchEvent(new Event('mtrini:providers-changed'));
-      onToast(`Provider ${prov} configured (key stored in OS keychain, never in config.json)`);
+      onToast(`Provider ${meta?.label || prov} configured (key stored in OS keychain, never in config.json)`);
     } catch (e: any) { onToast(`Could not save provider: ${e.message || e}`); }
   };
 
@@ -263,18 +317,19 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
         <>
           <label className="f">Provider</label>
           <select className="t" value={prov} onChange={(e) => pick(e.target.value)}>
-            {(allProv.length ? allProv : PROVIDERS.map((id) => ({ id }))).map((p: any) => (
+            {(allProv.length ? allProv.filter((p) => !p.free) : PROVIDERS.map((id) => ({ id }))).map((p: any) => (
               <option key={p.id} value={p.id}>{p.label || p.id}{p.configured ? ' ●' : ''}</option>
             ))}
           </select>
-          {NEEDS_KEY.includes(prov) && (
+          {meta?.hint && <p className="hint">{meta.hint}</p>}
+          {needKey && (
             <>
               <label className="f">API key{prov === 'huggingface' ? ' / token' : ''} (stored in OS keychain)</label>
               <input className="t" type="password" value={key} onChange={(e) => setKey(e.target.value)}
                 placeholder={prov === 'azure' ? 'Azure API key' : 'sk-…'} autoComplete="off" />
             </>
           )}
-          {NEEDS_URL.includes(prov) && (
+          {needUrl && (
             <>
               <label className="f">{prov === 'azure' ? 'Resource endpoint' : 'Base URL'}</label>
               <input className="t" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={DEFAULT_URL[prov] || 'https://…'} />
@@ -291,8 +346,10 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
           {prov === 'lmstudio' && <p className="hint">LM Studio → Developer tab → Start Server (port 1234).</p>}
           <div style={{ marginTop: 12 }} className="row">
             <button className="btn primary" onClick={saveProvider}>Save provider</button>
-            <button className="btn" onClick={() => api.disconnect(prov).then(() => { window.dispatchEvent(new Event('mtrini:providers-changed')); onToast('Disconnected'); }).catch((e: any) => onToast(`Disconnect failed: ${e.message || e}`))}>Disconnect</button>
+            <button className="btn" onClick={() => api.disconnect(prov).then(() => { loadProviders(); window.dispatchEvent(new Event('mtrini:providers-changed')); onToast('Disconnected'); }).catch((e: any) => onToast(`Disconnect failed: ${e.message || e}`))}>Disconnect</button>
           </div>
+          <CustomProviders providers={allProv} onToast={onToast}
+            onChanged={() => { loadProviders(); window.dispatchEvent(new Event('mtrini:providers-changed')); }} />
         </>
       )}
 

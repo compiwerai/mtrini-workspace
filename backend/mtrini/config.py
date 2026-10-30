@@ -70,6 +70,15 @@ def save_provider_settings(provider: str, patch: dict[str, Any]) -> None:
     (user_dir() / "providers.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+CUSTOM_PREFIX = "custom-"
+
+
+def custom_providers() -> list[dict[str, Any]]:
+    """Your own OpenAI-compatible providers (any number), e.g. OrcaRouter, Kojo or a friend's server."""
+    return [{"id": pid, "label": s.get("label") or pid, "baseUrl": s.get("baseUrl", "")}
+            for pid, s in _user_providers().items() if pid.startswith(CUSTOM_PREFIX) and s.get("custom")]
+
+
 def forget_provider(provider: str) -> None:
     data = _user_providers()
     if data.pop(provider, None) is not None:
