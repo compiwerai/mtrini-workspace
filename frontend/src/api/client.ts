@@ -107,6 +107,19 @@ export const api = {
   addCustomProvider: (b: { label: string; baseUrl: string; apiKey?: string }) =>
     j<{ id: string; label: string; baseUrl: string }>('/api/providers/custom', { method: 'POST', body: JSON.stringify(b) }),
   deleteCustomProvider: (id: string) => j<any>(`/api/providers/custom/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updateStatus: () => j<any>('/api/update'),
+  checkForUpdates: () => j<any>('/api/update/check', { method: 'POST', body: '{}' }),
+  setAutoUpdate: (auto: boolean) => j<any>('/api/update/settings', { method: 'POST', body: JSON.stringify({ auto }) }),
+  restartToUpdate: () => j<any>('/api/update/restart', { method: 'POST', body: '{}' }),
+  account: () => j<any>('/api/account'),
+  accountLogin: (provider: string, link = false) =>
+    j<{ loginId: string; url: string; interval: number }>('/api/account/login', { method: 'POST', body: JSON.stringify({ provider, link }) }),
+  pollAccountLogin: (loginId: string) => j<any>(`/api/account/poll/${encodeURIComponent(loginId)}`, { method: 'POST', body: '{}' }),
+  cancelAccountLogin: (loginId: string) => j<any>(`/api/account/login/${encodeURIComponent(loginId)}`, { method: 'DELETE' }),
+  accountLogout: () => j<any>('/api/account/logout', { method: 'POST', body: '{}' }),
+  revokeAccountDevice: (id: string) => j<any>(`/api/account/devices/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: '{}' }),
+  unlinkAccount: (provider: string) => j<any>(`/api/account/identities/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
+  deleteAccount: () => j<any>('/api/account', { method: 'DELETE' }),
   agentSession: (id: string) => j<any>(`/api/agent/session/${id}`, undefined, { pin: true }),
   rewind: (threadId: string, turn: number, files = true, conversation = true) =>
     j<any>('/api/agent/rewind', { method: 'POST', body: JSON.stringify({ threadId, turn, files, conversation }) }, { pin: true }),

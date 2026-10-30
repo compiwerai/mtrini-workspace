@@ -8,3 +8,4 @@ def _isolated_user_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("MTRINI_HOME", str(tmp_path / "_home"))
     monkeypatch.delenv("MTRINI_FREE_URL", raising=False)
     monkeypatch.setattr("mtrini.providers.free.FREE_RELAY_URL", "")
+    monkeypatch.setattr("mtrini.account.CLOUD_URL", "")  # and away from the live Mtrini Cloud

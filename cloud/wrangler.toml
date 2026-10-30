@@ -1,0 +1,15 @@
+# Mtrini Cloud (accounts, and later sync and the phone-to-PC bridge). Cloudflare Workers free plan.
+# Setup: see README.md. Client IDs and secrets are set with `npx wrangler secret put`, never stored here.
+name = "mtrini-cloud"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mtrini-cloud"
+database_id = "130239f7-1642-466e-948b-8b17a6cad453"
+migrations_dir = "migrations"
+
+[vars]
+# The public address of this Worker; sign-in providers redirect back to it.
+BASE_URL = "https://mtrini-cloud.roblox-event-bot-worker.workers.dev"

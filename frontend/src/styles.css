@@ -610,6 +610,19 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .userpill .rewind { opacity: 0; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
 .msg.user:hover .rewind, .userpill .rewind:focus-visible { opacity: 1; }
 .userpill .rewind:hover { color: var(--text); background: var(--bg3); }
+.updatebar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.18);
+  max-width: calc(100vw - 32px); flex-wrap: wrap; }
+.updatebar .btn { white-space: nowrap; text-decoration: none; }
+.updatesettings { margin: 14px 0 6px; }
+.updatesettings .setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.account h3 { margin: 0 0 6px; font-size: 16px; }
+.account .signins { display: flex; flex-direction: column; gap: 8px; max-width: 320px; margin-top: 12px; }
+.account .who { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.account .who img, .account .avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.account .avatar { display: grid; place-items: center; background: var(--bg3); font-weight: 700; }
+.account .setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.btn.danger { color: var(--danger); }
 .customadd { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .customadd .btn { grid-column: 1 / -1; justify-self: start; }
 .customlist .setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }

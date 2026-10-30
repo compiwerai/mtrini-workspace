@@ -110,11 +110,28 @@ def _linux_main() -> None:
     threading.Event().wait()  # keep serving until killed
 
 
+def _install_update_on_exit() -> None:
+    """Closing the app installs a downloaded update (Windows: silent installer; AppImage: file swap)."""
+    try:
+        from mtrini import updater
+
+        if updater.enabled() and updater.apply(relaunch=False):
+            _log("update installed on exit")
+    except Exception:
+        import traceback
+
+        _log("update on exit failed:\n" + traceback.format_exc())
+
+
 def main() -> None:
     _log("desktop starting")
     threading.Thread(target=_serve, daemon=True).start()
+    from mtrini import updater
+
+    threading.Thread(target=updater.background_loop, daemon=True).start()
     if sys.platform.startswith("linux"):
         _linux_main()
+        _install_update_on_exit()
         return
     try:
         import webview  # type: ignore
@@ -122,6 +139,7 @@ def main() -> None:
         _log("webview starting")
         webview.create_window(TITLE, URL, width=1400, height=900, min_size=(1100, 700))
         webview.start()
+        _install_update_on_exit()  # the window was closed
     except Exception:
         import traceback
         import webbrowser
