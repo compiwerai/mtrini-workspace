@@ -16,10 +16,21 @@ from . import __version__
 from . import models as models_mod
 from . import project as project_mod
 from .agent import engine as agent_engine
-from .config import delete_secret, get_secret, load_config, save_config, set_secret, workspace_root
+from .config import (
+    delete_secret,
+    forget_provider,
+    get_secret,
+    load_config,
+    provider_settings,
+    save_config,
+    save_provider_settings,
+    saved_providers,
+    set_secret,
+    workspace_root,
+)
 from .proc import NO_WINDOW
 from .providers import ChatMessage
-from .providers.registry import PROVIDER_META, build_provider
+from .providers.registry import build_provider, provider_meta, supports_reasoning
 from .tools import registry as tools_registry
 
 app = FastAPI(title="Mtrini Workspace", version=__version__)
@@ -94,12 +105,18 @@ def runtimes():
 def providers(workspace: str | None = None):
     r = root(workspace)
     out = []
-    for m in PROVIDER_META:
-        has_key = False
-        if m.get("needsKey"):
-            key = get_secret(r, f"mtrini-{m['id']}", "apiKey") or get_secret(r, "mtrini-hf", "token")
-            has_key = bool(key)
-        out.append({**m, "configured": (not m.get("needsKey")) or has_key})
+    saved = saved_providers()
+    for m in provider_meta():
+        pid = m["id"]
+        if m.get("free"):
+            connected = True
+        elif pid == "huggingface":
+            connected = bool(get_secret(r, "mtrini-hf", "token"))
+        elif m.get("needsKey"):
+            connected = bool(get_secret(r, f"mtrini-{pid}", "apiKey"))
+        else:  # local servers: connected once you saved them in Settings
+            connected = pid in saved or bool(load_config(r).get(f"provider.{pid}"))
+        out.append({**m, "configured": connected, "kind": m.get("kind", "chat")})
     # local endpoint liveness
     return {"providers": out}
 
@@ -122,19 +139,9 @@ def configure_provider(cfg: ProviderConfig):
         where = set_secret(r, svc, acct, cfg.apiKey)
     else:
         where = "unchanged"
-    cur = load_config(r)
-    key = f"provider.{cfg.provider}"
-    prev = cur.get(key, {})
-    merged = dict(prev) if isinstance(prev, dict) else {}
-    if cfg.baseUrl is not None:
-        merged["baseUrl"] = cfg.baseUrl
-    if cfg.model is not None:
-        merged["model"] = cfg.model
-    if cfg.apiVersion is not None:
-        merged["apiVersion"] = cfg.apiVersion
-    if merged:
-        cur[key] = merged
-    save_config(r, cur)
+    patch = {k: v for k, v in (("baseUrl", cfg.baseUrl), ("model", cfg.model), ("apiVersion", cfg.apiVersion))
+             if v is not None}
+    save_provider_settings(cfg.provider, patch)  # kept for every project, not just this one
     return {"ok": True, "stored": where}
 
 
@@ -142,17 +149,18 @@ def configure_provider(cfg: ProviderConfig):
 def disconnect_provider(body: dict):
     r = root(body.get("workspace"))
     pid = body.get("provider", "")
-    delete_secret(r, f"mtrini-{pid}", "apiKey")
-    delete_secret(r, "mtrini-hf", "token")
+    if pid == "huggingface":
+        delete_secret(r, "mtrini-hf", "token")
+    else:
+        delete_secret(r, f"mtrini-{pid}", "apiKey")
+    forget_provider(pid)
     return {"ok": True}
 
 
 @app.get("/api/models")
 def api_models(provider: str = "local", workspace: str | None = None):
     r = root(workspace)
-    cfg = load_config(r)
-    settings = cfg.get(f"provider.{provider}", {})
-    p = build_provider(provider, r, settings if isinstance(settings, dict) else {})
+    p = build_provider(provider, r, provider_settings(r, provider))
     import anyio
 
     async def _go():
@@ -161,7 +169,8 @@ def api_models(provider: str = "local", workspace: str | None = None):
     try:
         models = anyio.run(_go)
         return {"models": [{"id": m.id, "label": m.label, "provider": m.provider,
-                            "capabilities": m.capabilities, "contextLength": m.contextLength}
+                            "capabilities": {**m.capabilities, "reasoning": supports_reasoning(provider, m.id)},
+                            "contextLength": m.contextLength}
                            for m in models]}
     except Exception as e:
         raise HTTPException(502, f"Provider error: {e}")
@@ -498,10 +507,8 @@ class ChatBody(BaseModel):
 @app.post("/api/chat")
 async def chat(body: ChatBody):
     r = root(body.workspace)
-    cfg = load_config(r)
-    settings = cfg.get(f"provider.{body.provider}", {})
     try:
-        p = build_provider(body.provider, r, settings if isinstance(settings, dict) else {})
+        p = build_provider(body.provider, r, provider_settings(r, body.provider))
     except ValueError as e:
         raise HTTPException(400, str(e))
     msgs = [ChatMessage(role=m.get("role", "user"), content=str(m.get("content", "")))
@@ -533,8 +540,7 @@ class AgentBody(BaseModel):
 
 
 def _provider_settings(r: Path, provider: str) -> dict:
-    s = load_config(r).get(f"provider.{provider}", {})
-    return s if isinstance(s, dict) else {}
+    return provider_settings(r, provider)
 
 
 @app.post("/api/agent")

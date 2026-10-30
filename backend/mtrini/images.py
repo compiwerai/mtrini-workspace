@@ -165,17 +165,15 @@ async def generate(root: Path, provider: str, model: str, prompt: str,
                 raise ValueError(f"model returned text, not an image: {r.text[:200]}")
             raw = r.content
     elif provider == "sdwebui":
-        from .config import load_config
+        from .config import provider_settings
 
-        cfg = load_config(root)
-        base = cfg.get("provider.sdwebui", {}).get("baseUrl", "http://127.0.0.1:7860")
+        base = provider_settings(root, "sdwebui").get("baseUrl", "http://127.0.0.1:7860")
         raw = await _sd_shape(base if isinstance(base, str) else "http://127.0.0.1:7860",
                               prompt, w, h)
     else:
-        from .config import load_config
+        from .config import provider_settings
 
-        cfg = load_config(root)
-        st = cfg.get(f"provider.{provider}", {})
+        st = provider_settings(root, provider)
         base = st.get("baseUrl", "http://localhost:8000/v1") if isinstance(st, dict) else "http://localhost:8000/v1"
         if support(provider) == "yes":
             raw = await _openai_shape(base, key, model, prompt, size_str)

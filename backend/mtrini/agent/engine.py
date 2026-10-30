@@ -509,7 +509,11 @@ async def run_approved_tool(root: Path, tool_name: str, args: dict, mcp: dict | 
 
 
 def friendly_error(e: Exception) -> str:
+    from ..providers.free import FreeModelError
+
     s = str(e)
+    if isinstance(e, FreeModelError):
+        return s
     name = type(e).__name__
     if "ConnectError" in name or "APIConnectionError" in name or "Connect" in s or "refused" in s.lower():
         return ("Model endpoint unreachable. Is your local server running "
