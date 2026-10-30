@@ -610,6 +610,11 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .userpill .rewind { opacity: 0; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
 .msg.user:hover .rewind, .userpill .rewind:focus-visible { opacity: 1; }
 .userpill .rewind:hover { color: var(--text); background: var(--bg3); }
+.customadd { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.customadd .btn { grid-column: 1 / -1; justify-self: start; }
+.customlist .setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.customlist .mono { font-family: var(--mono); font-size: 11px; }
+@media (max-width: 640px) { .customadd { grid-template-columns: 1fr; } }
 .linkbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0 0 4px; font-size: 13px; }
 .linkbtn:hover { color: var(--danger); }
 

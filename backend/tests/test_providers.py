@@ -99,3 +99,42 @@ def test_free_model_listed_first_only_when_relay_is_set(client, monkeypatch):
     monkeypatch.setenv("MTRINI_FREE_URL", "https://relay.test")
     first = client.get("/api/providers").json()["providers"][0]
     assert first["id"] == "free" and first["configured"] is True and first["defaultModel"] == "qwen38"
+
+
+def test_any_number_of_custom_providers(client):
+    a = client.post("/api/providers/custom", json={"label": "OrcaRouter", "baseUrl": "https://api.orcarouter.ai/v1/",
+                                                   "apiKey": "orca-key"}).json()
+    b = client.post("/api/providers/custom", json={"label": "Kojo", "baseUrl": "https://api.kojo.sh/v1"}).json()
+    c = client.post("/api/providers/custom", json={"label": "OrcaRouter", "baseUrl": "http://localhost:9000/v1"}).json()
+    assert (a["id"], b["id"], c["id"]) == ("custom-orcarouter", "custom-kojo", "custom-orcarouter-2")
+    assert a["baseUrl"] == "https://api.orcarouter.ai/v1"  # trailing slash dropped
+    provs = {p["id"]: p for p in client.get("/api/providers").json()["providers"]}
+    assert provs["custom-kojo"]["configured"] and provs["custom-kojo"]["custom"]
+    assert provs["custom-orcarouter"]["label"] == "OrcaRouter" and provs["custom-orcarouter"]["kind"] == "chat"
+
+    from mtrini.providers.registry import build_provider
+
+    p = build_provider("custom-orcarouter", __import__("pathlib").Path("."), provs["custom-orcarouter"] | {"baseUrl": a["baseUrl"]})
+    assert p.base_url == "https://api.orcarouter.ai/v1" and p.api_key == "orca-key"
+
+    assert client.delete("/api/providers/custom/custom-kojo").json() == {"ok": True}
+    assert "custom-kojo" not in {p["id"] for p in client.get("/api/providers").json()["providers"]}
+
+
+def test_custom_provider_validation(client):
+    assert client.post("/api/providers/custom", json={"label": "", "baseUrl": "https://x.y/v1"}).status_code == 400
+    assert client.post("/api/providers/custom", json={"label": "X", "baseUrl": "ftp://x"}).status_code == 400
+    assert client.delete("/api/providers/custom/openai").status_code == 400
+
+
+def test_linux_app_window_picks_an_installed_browser(monkeypatch):
+    import importlib
+    import sys as _sys
+
+    _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
+    desktop = importlib.import_module("desktop")
+    installed = {"chromium": "/usr/bin/chromium"}
+    cmd = desktop.app_window_command(which=installed.get)
+    assert cmd[0] == "/usr/bin/chromium" and "--app=http://127.0.0.1:8787" in cmd
+    assert any(a.startswith("--user-data-dir=") for a in cmd)  # own profile: closing the window ends the app
+    assert desktop.app_window_command(which=lambda n: None) is None

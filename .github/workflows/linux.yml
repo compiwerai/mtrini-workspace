@@ -1,0 +1,32 @@
+name: linux
+# Builds the Linux app (.tar.gz, .deb, AppImage). Runs on release tags, on demand, and on
+# pushes to linux-* branches; on a tag it also attaches the packages to that GitHub release.
+on:
+  push:
+    tags: ['v*']
+    branches: ['linux-*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Build and package
+        run: bash scripts/build-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mtrini-workspace-linux
+          path: installer/*
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" installer/* --clobber

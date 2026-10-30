@@ -55,9 +55,67 @@ def _serve() -> None:
         _log("server crashed:\n" + traceback.format_exc())
 
 
+# Linux: an app window in an installed Chromium-family browser (no tabs or address bar). Embedding a
+# webview would mean bundling WebKitGTK, which breaks across distributions; every desktop has a browser.
+APP_BROWSERS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge",
+                "microsoft-edge-stable", "brave-browser", "vivaldi")
+
+
+def _wait_for_server(timeout: float = 30.0) -> None:
+    import time
+    import urllib.request
+
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            urllib.request.urlopen(URL + "/api/health", timeout=2)
+            return
+        except Exception:
+            time.sleep(0.3)
+
+
+def app_window_command(which=None) -> list[str] | None:
+    """Command that opens the UI as its own app window, or None if no suitable browser is installed."""
+    import shutil
+
+    which = which or shutil.which
+    for name in APP_BROWSERS:
+        exe = which(name)
+        if exe:
+            profile = os.path.join(os.path.expanduser("~"), ".mtrini", "app-window")
+            return [exe, f"--app={URL}", f"--user-data-dir={profile}", "--window-size=1400,900",
+                    "--no-first-run", "--no-default-browser-check"]
+    return None
+
+
+def _linux_main() -> None:
+    import subprocess
+    import time
+    import webbrowser
+
+    if os.environ.get("MTRINI_HEADLESS"):  # servers and CI smoke tests: no window, just serve
+        threading.Event().wait()
+    _wait_for_server()
+    cmd = app_window_command()
+    if cmd:
+        _log("app window: " + cmd[0])
+        t0 = time.time()
+        r = subprocess.run(cmd)  # its own profile, so this returns when the window closes
+        if r.returncode == 0 or time.time() - t0 > 5:
+            return
+        _log(f"app window exited at once (code {r.returncode}); opening the default browser")
+    else:
+        _log("no app-window browser found; opening the default browser")
+    webbrowser.open(URL)
+    threading.Event().wait()  # keep serving until killed
+
+
 def main() -> None:
     _log("desktop starting")
     threading.Thread(target=_serve, daemon=True).start()
+    if sys.platform.startswith("linux"):
+        _linux_main()
+        return
     try:
         import webview  # type: ignore
 

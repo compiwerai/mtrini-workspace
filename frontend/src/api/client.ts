@@ -104,6 +104,9 @@ export const api = {
   generateImage: (provider: string, model: string, prompt: string, size: string) =>
     j<any>('/api/images/generate', { method: 'POST', body: JSON.stringify({ provider, model, prompt, size }) }),
   deleteImage: (id: string) => j<any>(`/api/images/${id}`, { method: 'DELETE' }),
+  addCustomProvider: (b: { label: string; baseUrl: string; apiKey?: string }) =>
+    j<{ id: string; label: string; baseUrl: string }>('/api/providers/custom', { method: 'POST', body: JSON.stringify(b) }),
+  deleteCustomProvider: (id: string) => j<any>(`/api/providers/custom/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   agentSession: (id: string) => j<any>(`/api/agent/session/${id}`, undefined, { pin: true }),
   rewind: (threadId: string, turn: number, files = true, conversation = true) =>
     j<any>('/api/agent/rewind', { method: 'POST', body: JSON.stringify({ threadId, turn, files, conversation }) }, { pin: true }),

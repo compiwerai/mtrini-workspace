@@ -145,6 +145,43 @@ def configure_provider(cfg: ProviderConfig):
     return {"ok": True, "stored": where}
 
 
+class CustomProviderBody(BaseModel):
+    label: str
+    baseUrl: str
+    apiKey: str | None = None
+    workspace: str | None = None
+
+
+@app.post("/api/providers/custom")
+def add_custom_provider(body: CustomProviderBody):
+    """Add one of your own OpenAI-compatible providers. You can add as many as you like."""
+    import re as _re
+
+    label, url = body.label.strip(), body.baseUrl.strip().rstrip("/")
+    if not label:
+        raise HTTPException(400, "Give the provider a name")
+    if not _re.match(r"^https?://[^\s/]+", url):
+        raise HTTPException(400, "Base URL must start with http:// or https://")
+    slug = _re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:32] or "provider"
+    taken = {m["id"] for m in provider_meta()}
+    pid, n = f"custom-{slug}", 2
+    while pid in taken:
+        pid, n = f"custom-{slug}-{n}", n + 1
+    save_provider_settings(pid, {"label": label, "baseUrl": url, "custom": True})
+    if body.apiKey:
+        set_secret(root(body.workspace), f"mtrini-{pid}", "apiKey", body.apiKey)
+    return {"id": pid, "label": label, "baseUrl": url}
+
+
+@app.delete("/api/providers/custom/{pid}")
+def delete_custom_provider(pid: str, workspace: str | None = None):
+    if not pid.startswith("custom-"):
+        raise HTTPException(400, "Not a custom provider")
+    delete_secret(root(workspace), f"mtrini-{pid}", "apiKey")
+    forget_provider(pid)
+    return {"ok": True}
+
+
 @app.post("/api/providers/disconnect")
 def disconnect_provider(body: dict):
     r = root(body.get("workspace"))
