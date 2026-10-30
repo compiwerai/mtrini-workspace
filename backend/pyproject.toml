@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mtrini-workspace-backend"
-version = "0.8.1"
+version = "0.8.2"
 description = "Mtrini Workspace backend — agent engine, providers, tools, model manager"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import AccountPanel from './AccountPanel';
+import { UpdateSettings } from './Updates';
 import { I } from './Icon';
 import { loadSettings, saveSettings, UISettings } from '../lib/settings';
 
@@ -18,10 +20,11 @@ const PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom', 'openai', 'anthropic
 
 const ACCENTS: Record<UISettings['accent'], string> = { teal: '#0e7490', blue: '#2563eb', green: '#15803d', violet: '#6d28d9', amber: '#a16207' };
 
-type Tab = 'appearance' | 'chat' | 'agent' | 'providers' | 'shortcuts' | 'about';
+type Tab = 'appearance' | 'chat' | 'agent' | 'providers' | 'account' | 'shortcuts' | 'about';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'appearance', label: 'Appearance' }, { id: 'chat', label: 'Chat' }, { id: 'agent', label: 'Agent' },
-  { id: 'providers', label: 'Providers' }, { id: 'shortcuts', label: 'Shortcuts' }, { id: 'about', label: 'About' },
+  { id: 'providers', label: 'Providers' }, { id: 'account', label: 'Account' }, { id: 'shortcuts', label: 'Shortcuts' },
+  { id: 'about', label: 'About' },
 ];
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -365,12 +368,15 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
         </div>
       )}
 
+      {tab === 'account' && <AccountPanel onToast={onToast} />}
+
       {tab === 'about' && (
         <>
           <div className="row"><img src="/logo.png" alt="" width={48} height={48} />
             <div><strong>Mtrini Workspace</strong><br />
               <span style={{ color: 'var(--muted)', fontSize: 12 }}>Your AI. Your code. Your workspace.</span></div>
           </div>
+          <UpdateSettings />
           <pre style={{ fontSize: 12, marginTop: 10 }}>{about ? JSON.stringify(about, null, 1) : '…'}</pre>
           <p className="hint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{I.check()} No telemetry. Local-first. Apache-2.0.</p>
           <div className="aboutby">

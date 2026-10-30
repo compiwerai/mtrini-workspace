@@ -182,6 +182,125 @@ def delete_custom_provider(pid: str, workspace: str | None = None):
     return {"ok": True}
 
 
+# ---- Mtrini account (optional; needed for the phone app and sync) ----
+
+def _account_call(fn, *a):
+
+    try:
+        return fn(*a)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:  # cloud unreachable or returned an error
+        raise HTTPException(502, f"Mtrini Cloud didn't answer: {str(e)[:200]}") from None
+
+
+# ---- automatic updates ----
+
+@app.get("/api/update")
+def api_update():
+    from . import updater
+
+    return updater.status()
+
+
+@app.post("/api/update/check")
+def api_update_check():
+    from . import updater
+
+    return updater.check(download=updater.enabled())
+
+
+class UpdateSettingsBody(BaseModel):
+    auto: bool
+
+
+@app.post("/api/update/settings")
+def api_update_settings(body: UpdateSettingsBody):
+    from . import updater
+
+    updater.set_enabled(body.auto)
+    return updater.status()
+
+
+@app.post("/api/update/restart")
+def api_update_restart():
+    """Install the downloaded update now and reopen the app (Windows), or swap the AppImage."""
+    import threading as _th
+
+    from . import updater
+
+    if not updater.apply(relaunch=True):
+        raise HTTPException(409, "No update is ready to install.")
+    _th.Timer(1.0, lambda: os._exit(0)).start()  # let this response reach the window, then quit
+    return {"ok": True}
+
+
+@app.get("/api/account")
+def api_account():
+    from . import account as _acc
+
+    return _account_call(_acc.status)
+
+
+class AccountLoginBody(BaseModel):
+    provider: str = ""
+    link: bool = False
+
+
+@app.post("/api/account/login")
+def api_account_login(body: AccountLoginBody):
+    from . import account as _acc
+
+    return _account_call(_acc.start_login, body.provider, body.link)
+
+
+@app.post("/api/account/poll/{login_id}")
+def api_account_poll(login_id: str):
+    from . import account as _acc
+
+    return _account_call(_acc.poll_login, login_id)
+
+
+@app.delete("/api/account/login/{login_id}")
+def api_account_cancel(login_id: str):
+    from . import account as _acc
+
+    _acc.cancel_login(login_id)
+    return {"ok": True}
+
+
+@app.post("/api/account/logout")
+def api_account_logout():
+    from . import account as _acc
+
+    _acc.logout()
+    return {"ok": True}
+
+
+@app.post("/api/account/devices/{device_id}/revoke")
+def api_account_revoke(device_id: str):
+    from . import account as _acc
+
+    return _account_call(_acc.revoke_device, device_id)
+
+
+@app.delete("/api/account/identities/{provider}")
+def api_account_unlink(provider: str):
+    from . import account as _acc
+
+    return _account_call(_acc.unlink, provider)
+
+
+@app.delete("/api/account")
+def api_account_delete():
+    from . import account as _acc
+
+    _account_call(_acc.delete_account)
+    return {"ok": True}
+
+
 @app.post("/api/providers/disconnect")
 def disconnect_provider(body: dict):
     r = root(body.get("workspace"))

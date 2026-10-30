@@ -45,12 +45,17 @@ No Python/Node needed at runtime:
 
 ```powershell
 .\scripts\build-exe.ps1        # builds frontend, exe -> dist\MtriniWorkspace\
-iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.1.exe
+iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.2.exe
 ```
 
 Run `MtriniWorkspace.exe` (or install the Setup): it serves the API **and**
 the UI from one process and opens `http://127.0.0.1:8787` in your browser.
-Silent install: `MtriniWorkspace-Setup-0.8.1.exe /SILENT`.
+Silent install: `MtriniWorkspace-Setup-0.8.2.exe /SILENT`.
+
+Updates: from 0.8.2 on, the app downloads new releases in the background (checksum-verified)
+and installs them when you close it, or right away with **Restart to update**. The AppImage
+updates itself too; `.deb` and `.tar.gz` installs only tell you a new version is out.
+Switch it off in Settings → About.
 
 ## Hugging Face → run locally (tested flow)
 
