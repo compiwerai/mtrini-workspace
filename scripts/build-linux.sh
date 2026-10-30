@@ -67,7 +67,7 @@ Description: Mtrini Workspace, an AI coding workspace
  Local-first desktop workspace with a coding agent, editor, terminal and Git.
  Works with local models and many API providers, plus a free built-in model.
 EOF
-dpkg-deb --root-owner-group --build "$DEB" "$OUT/mtrini-workspace_${VERSION}_amd64.deb"
+dpkg-deb -Zxz --root-owner-group --build "$DEB" "$OUT/mtrini-workspace_${VERSION}_amd64.deb"
 
 echo "== 5/5 AppImage =="
 APPDIR=$(mktemp -d)/$NAME.AppDir
