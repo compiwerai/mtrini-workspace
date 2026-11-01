@@ -31,7 +31,7 @@ jobs:
           npm ci --prefix frontend
           npm run build --prefix frontend
       - name: Copy it into the Android project
-        run: npx cap sync android
+        run: ./node_modules/.bin/cap sync android
       - name: Build the APK
         working-directory: frontend/android
         run: |
