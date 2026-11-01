@@ -24,10 +24,12 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
       # the ubuntu runner already ships the Android SDK (ANDROID_HOME); Gradle fetches any missing platform
+      # --prefix uses frontend/package-lock.json, like ci.yml (the root workspace lock misses Linux's rollup binary)
       - name: Build the interface
+        working-directory: .
         run: |
-          npm ci
-          npm run build
+          npm ci --prefix frontend
+          npm run build --prefix frontend
       - name: Copy it into the Android project
         run: npx cap sync android
       - name: Build the APK
