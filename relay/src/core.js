@@ -174,10 +174,23 @@ export function usageScanner() {
   };
 }
 
+// The phone app calls the relay from its own origin. There are no cookies (the install id is a header),
+// so allowing any origin gives a page nothing it couldn't do by calling the relay directly.
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, x-mtrini-install",
+  "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-max-age": "86400" };
+
 /**
  * Handle one request. deps: { limiter: {reserve, record}, fetch, waitUntil? }
  */
 export async function handle(request, env, deps) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const res = await route(request, env, deps);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
+}
+
+async function route(request, env, deps) {
   const cfg = config(env);
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");

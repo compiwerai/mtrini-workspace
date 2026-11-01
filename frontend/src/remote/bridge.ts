@@ -141,6 +141,11 @@ export class PhoneBridge {
     return { code, done };
   }
 
+  /** Seal something for one PC with this phone's pairing key: used for work queued in the cloud (remote/cloud.ts). */
+  async sealFor(pcId: string, payload: object) {
+    return seal(await this.keyFor(pcId), this.me, pcId, payload);
+  }
+
   forget(pcId: string) {
     const all = this.paired(); delete all[pcId]; localStorage.setItem(PAIRED_STORE, JSON.stringify(all));
     this.keys.delete(pcId); this.openers.delete(pcId); this.emit();

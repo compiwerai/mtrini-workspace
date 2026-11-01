@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from . import __version__
@@ -260,11 +260,13 @@ def api_account_login(body: AccountLoginBody):
 @app.post("/api/account/poll/{login_id}")
 def api_account_poll(login_id: str):
     from . import account as _acc
+    from . import cloud_sync as _sync
     from . import remote as _remote
 
     res = _account_call(_acc.poll_login, login_id)
     if isinstance(res, dict) and res.get("status") == "done":
         _remote.restart()  # signed in: connect the bridge if remote access is on
+        _sync.restart()  # and save sessions to the cloud
     return res
 
 
@@ -279,9 +281,11 @@ def api_account_cancel(login_id: str):
 @app.post("/api/account/logout")
 def api_account_logout():
     from . import account as _acc
+    from . import cloud_sync as _sync
     from . import remote as _remote
 
     _remote.stop()
+    _sync.stop()
     _acc.logout()
     return {"ok": True}
 
@@ -290,9 +294,11 @@ def api_account_logout():
 
 @app.on_event("startup")
 def _remote_startup():
+    from . import cloud_sync as _sync
     from . import remote as _remote
 
     _remote.start()
+    _sync.start()
 
 
 @app.get("/api/remote")
@@ -341,6 +347,13 @@ def api_remote_auto(phone_id: str, body: RemoteAutoBody):
     return _remote.set_allow_auto(phone_id, body.allow)
 
 
+@app.post("/api/remote/devices/{phone_id}/full")
+def api_remote_full(phone_id: str, body: RemoteAutoBody):
+    from . import remote as _remote
+
+    return _remote.set_full(phone_id, body.allow)
+
+
 @app.delete("/api/remote/devices/{phone_id}")
 def api_remote_forget(phone_id: str):
     from . import remote as _remote
@@ -360,6 +373,56 @@ def api_remote_projects(body: RemoteProjectBody):
     return _remote.share_project(body.path, body.share)
 
 
+# ---- cloud sync (sessions saved to Mtrini Cloud) and Mtrini Mail
+
+@app.get("/api/cloud/sync")
+def api_cloud_sync():
+    from . import cloud_sync as _sync
+
+    return _sync.status()
+
+
+@app.post("/api/cloud/sync")
+def api_cloud_sync_set(body: RemoteSettingsBody):
+    from . import cloud_sync as _sync
+
+    return _sync.set_enabled(body.enabled)
+
+
+class WorkspacesBody(BaseModel):
+    paths: list[str] = []
+
+
+@app.post("/api/cloud/workspaces")
+def api_cloud_workspaces(body: WorkspacesBody):
+    """Projects the interface remembers (recent folders): their sessions get saved to the cloud too."""
+    from . import cloud_sync as _sync
+    from . import threads as _t
+
+    for p in body.paths[:50]:
+        r = Path(p).expanduser()
+        if (r / ".mtrini" / "threads").is_dir():
+            _t._remember(r)
+    _sync.nudge()
+    return {"workspaces": _t.known_workspaces()}
+
+
+@app.api_route("/api/mail", methods=["GET", "POST"])
+@app.api_route("/api/mail/{rest:path}", methods=["GET", "POST", "DELETE"])
+async def api_mail(request: Request, rest: str = ""):
+    """Mtrini Mail lives in Mtrini Cloud; the app reaches it with this PC's sign-in."""
+    from . import account as _acc
+
+    token = _acc._token()
+    if not token:
+        raise HTTPException(401, "Sign in to use Mtrini Mail.")
+    path = "/mail" + (f"/{rest}" if rest else "")
+    async with httpx.AsyncClient(base_url=_acc.cloud_url(), timeout=30) as c:
+        r = await c.request(request.method, path, params=dict(request.query_params), content=await request.body(),
+                            headers={"authorization": f"Bearer {token}", "content-type": "application/json"})
+    return Response(r.content, status_code=r.status_code, media_type="application/json")
+
+
 @app.post("/api/account/devices/{device_id}/revoke")
 def api_account_revoke(device_id: str):
     from . import account as _acc
@@ -377,7 +440,11 @@ def api_account_unlink(provider: str):
 @app.delete("/api/account")
 def api_account_delete():
     from . import account as _acc
+    from . import cloud_sync as _sync
+    from . import remote as _remote
 
+    _remote.stop()
+    _sync.stop()
     _account_call(_acc.delete_account)
     return {"ok": True}
 

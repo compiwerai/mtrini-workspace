@@ -11,7 +11,45 @@ from typing import Any
 def _threads_dir(root: Path) -> Path:
     d = root / ".mtrini" / "threads"
     d.mkdir(parents=True, exist_ok=True)
+    _remember(root)
     return d
+
+
+# Every project folder that has sessions, so cloud sync (cloud_sync.py) and Full-access phones can find them.
+_known: set[str] | None = None
+
+
+def _known_path() -> Path:
+    from .config import user_dir
+
+    return user_dir() / "workspaces.json"
+
+
+def known_workspaces() -> list[str]:
+    global _known
+    if _known is None:
+        try:
+            _known = {str(p) for p in json.loads(_known_path().read_text(encoding="utf-8"))}
+        except (OSError, ValueError, TypeError):
+            _known = set()
+    return sorted(p for p in _known if (Path(p) / ".mtrini" / "threads").is_dir())
+
+
+def _remember(root: Path) -> None:
+    known_workspaces()
+    key = str(root.resolve())
+    if key in _known:  # type: ignore[operator]
+        return
+    _known.add(key)  # type: ignore[union-attr]
+    try:
+        _known_path().write_text(json.dumps(sorted(_known), indent=1), encoding="utf-8")  # type: ignore[arg-type]
+    except OSError:
+        pass
+
+
+def thread_files(root: Path) -> list[Path]:
+    d = root / ".mtrini" / "threads"
+    return sorted(d.glob("*.json")) if d.is_dir() else []
 
 
 def _tid_path(root: Path, tid: str) -> Path:
@@ -34,6 +72,18 @@ def list_threads(root: Path) -> list[dict[str, Any]]:
         except OSError:
             continue
     return out
+
+
+def ensure_thread(root: Path, tid: str, title: str) -> dict[str, Any]:
+    """The session with this id, made empty if it doesn't exist yet (work queued from the phone starts new ones)."""
+    try:
+        return get_thread(root, tid)
+    except FileNotFoundError:
+        now = int(time.time())
+        data = {"id": tid, "title": title.strip()[:80] or "Untitled", "created": now, "updated": now,
+                "workspace": str(root), "messages": []}
+        _tid_path(root, tid).write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return data
 
 
 def create_thread(root: Path, title: str, workspace: str | None = None) -> dict[str, Any]:
