@@ -33,12 +33,15 @@ export default function MailView({ call, onToast }: { call: MailCall; onToast?: 
   const [draft, setDraft] = useState<{ to: string; subject: string; body: string; reply_to?: string } | null>(null);
   const toast = onToast || (() => {});
 
+  // `call` may be a new function on every render of the parent; keep one so lists don't reload each time
+  const callRef = useRef(call);
+  callRef.current = call;
   const ask = useCallback(async (path: string, init?: RequestInit) => {
-    const r = await call(path, init);
+    const r = await callRef.current(path, init);
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new Error(data?.error?.message || data?.detail || `Mtrini Cloud answered ${r.status}.`), { status: r.status, data });
     return data;
-  }, [call]);
+  }, []);
 
   const loadMe = useCallback(() => ask('/mail/me').then((m) => { setMe(m); setProblem(''); })
     .catch((e) => setProblem(e.status === 401 ? 'Sign in to use Mtrini Mail.' : e.message)), [ask]);
