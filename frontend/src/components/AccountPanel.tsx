@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import RemotePanel from './RemotePanel';
 import { api } from '../api/client';
 
 const LABEL: Record<string, string> = { google: 'Google', discord: 'Discord', github: 'GitHub' };
@@ -117,6 +118,8 @@ export default function AccountPanel({ onToast }: { onToast: (s: string) => void
           {!d.current && <button className="btn" onClick={() => act(() => api.revokeAccountDevice(d.id), 'Device signed out')}>Sign out</button>}
         </div>
       ))}
+
+      <RemotePanel onToast={onToast} />
 
       <div className="row" style={{ marginTop: 18 }}>
         <button className="btn" onClick={() => act(() => api.accountLogout(), 'Signed out')}>Sign out</button>

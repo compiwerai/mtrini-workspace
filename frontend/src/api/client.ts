@@ -3,6 +3,13 @@ export type Skill = { name: string; scope: SkillScope; description: string; summ
 
 const BASE = (import.meta as any).env?.VITE_API || '';
 
+// How requests reach the backend: plain fetch on the PC; the encrypted bridge on the phone (see remote/bridge.ts).
+type Transport = (url: string, init: RequestInit) => Promise<Response>;
+let transport: Transport = (url, init) => fetch(url, init);
+export function setTransport(t: Transport | null) {
+  transport = t || ((url, init) => fetch(url, init));
+}
+
 let WS: string | null = localStorage.getItem('mtrini.workspace');
 let OV: string | null = null; // per-thread execution override (thread folder beats global)
 export function setExecOverride(p: string | null) {
@@ -46,7 +53,7 @@ function inject(url: string, init?: RequestInit, pin?: boolean): { url: string; 
 
 async function j<T>(url: string, init?: RequestInit, opts?: { pin?: boolean }): Promise<T> {
   const w = inject(url, init, opts?.pin);
-  const r = await fetch(BASE + w.url, { ...w.init, headers: { 'content-type': 'application/json', ...(w.init?.headers || {}) } });
+  const r = await transport(BASE + w.url, { ...w.init, headers: { 'content-type': 'application/json', ...(w.init?.headers || {}) } });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json() as Promise<T>;
 }
@@ -65,6 +72,11 @@ export const api = {
   skill: (name: string) => j<{ name: string; content: string; description: string; body: string }>(`/api/skills/${encodeURIComponent(name)}`),
   saveSkill: (b: { name: string; description: string; content: string; scope: SkillScope }) => j<any>('/api/skills', { method: 'POST', body: JSON.stringify(b) }),
   deleteSkill: (name: string, scope: SkillScope) => j<any>(`/api/skills/${encodeURIComponent(name)}?scope=${scope}`, { method: 'DELETE' }),
+  skillLibrary: () => j<{ categories: string[]; skills: LibrarySkill[] }>('/api/skills/library'),
+  addLibrarySkills: (names: string[], scope: SkillScope) => j<{ added: string[] }>('/api/skills/library', { method: 'POST', body: JSON.stringify({ names, scope }) }),
+  importPreview: (url: string) => j<ImportPreview>('/api/skills/import/preview', { method: 'POST', body: JSON.stringify({ url }) }),
+  importSkills: (url: string, names: string[], scope: SkillScope, overwrite: boolean) =>
+    j<{ added: string[]; skipped: { name: string; reason: string }[]; source: string }>('/api/skills/import', { method: 'POST', body: JSON.stringify({ url, names, scope, overwrite }) }),
   browse: (path?: string) => j<any>(`/api/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`, undefined, { pin: true }),
   execTool: (tool: string, args: any) => j<any>('/api/tools/execute', { method: 'POST', body: JSON.stringify({ tool, args }) }),
   gitStatus: () => j<any>('/api/git/status'),
@@ -111,6 +123,13 @@ export const api = {
   checkForUpdates: () => j<any>('/api/update/check', { method: 'POST', body: '{}' }),
   setAutoUpdate: (auto: boolean) => j<any>('/api/update/settings', { method: 'POST', body: JSON.stringify({ auto }) }),
   restartToUpdate: () => j<any>('/api/update/restart', { method: 'POST', body: '{}' }),
+  remote: () => j<any>('/api/remote'),
+  setRemote: (enabled: boolean) => j<any>('/api/remote/settings', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  approveRemotePair: (id: string) => j<any>(`/api/remote/pair/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }),
+  denyRemotePair: (id: string) => j<any>(`/api/remote/pair/${encodeURIComponent(id)}/deny`, { method: 'POST', body: '{}' }),
+  setRemoteAuto: (id: string, allow: boolean) => j<any>(`/api/remote/devices/${encodeURIComponent(id)}/auto`, { method: 'POST', body: JSON.stringify({ allow }) }),
+  forgetRemote: (id: string) => j<any>(`/api/remote/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  shareRemoteProject: (path: string, share: boolean) => j<any>('/api/remote/projects', { method: 'POST', body: JSON.stringify({ path, share }) }),
   account: () => j<any>('/api/account'),
   accountLogin: (provider: string, link = false) =>
     j<{ loginId: string; url: string; interval: number }>('/api/account/login', { method: 'POST', body: JSON.stringify({ provider, link }) }),
@@ -142,7 +161,7 @@ export function imgUrl(id: string) {
 
 export async function* sse<T = any>(url: string, body: any, signal?: AbortSignal): AsyncGenerator<T> {
   const w = inject(url, { method: 'POST', body: JSON.stringify(body), signal } as any);
-  const r = await fetch(BASE + w.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: (w.init as any)?.body, signal });
+  const r = await transport(BASE + w.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: (w.init as any)?.body, signal });
   if (!r.ok || !r.body) throw new Error(`SSE failed: ${r.status}`);
   const reader = r.body.getReader();
   const dec = new TextDecoder();
@@ -160,3 +179,7 @@ export async function* sse<T = any>(url: string, body: any, signal?: AbortSignal
     }
   }
 }
+
+export type LibrarySkill = { name: string; category: string; description: string; content: string; installed: boolean };
+export type ImportPreview = { source: string; ref: string;
+  skills: { path: string; name: string; description: string; chars: number; exists: boolean; ok: boolean; reason: string }[] };

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -259,8 +260,12 @@ def api_account_login(body: AccountLoginBody):
 @app.post("/api/account/poll/{login_id}")
 def api_account_poll(login_id: str):
     from . import account as _acc
+    from . import remote as _remote
 
-    return _account_call(_acc.poll_login, login_id)
+    res = _account_call(_acc.poll_login, login_id)
+    if isinstance(res, dict) and res.get("status") == "done":
+        _remote.restart()  # signed in: connect the bridge if remote access is on
+    return res
 
 
 @app.delete("/api/account/login/{login_id}")
@@ -274,9 +279,85 @@ def api_account_cancel(login_id: str):
 @app.post("/api/account/logout")
 def api_account_logout():
     from . import account as _acc
+    from . import remote as _remote
 
+    _remote.stop()
     _acc.logout()
     return {"ok": True}
+
+
+# ---- remote access (a paired phone uses this PC through Mtrini Cloud; never reachable from the phone)
+
+@app.on_event("startup")
+def _remote_startup():
+    from . import remote as _remote
+
+    _remote.start()
+
+
+@app.get("/api/remote")
+def api_remote():
+    from . import remote as _remote
+
+    return _remote.status()
+
+
+class RemoteSettingsBody(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/remote/settings")
+def api_remote_settings(body: RemoteSettingsBody):
+    from . import remote as _remote
+
+    return _remote.set_enabled(body.enabled)
+
+
+@app.post("/api/remote/pair/{phone_id}/approve")
+def api_remote_approve(phone_id: str):
+    from . import remote as _remote
+
+    try:
+        return _remote.approve_pairing(phone_id)
+    except ValueError as e:
+        raise HTTPException(410, str(e))
+
+
+@app.post("/api/remote/pair/{phone_id}/deny")
+def api_remote_deny(phone_id: str):
+    from . import remote as _remote
+
+    return _remote.deny_pairing(phone_id)
+
+
+class RemoteAutoBody(BaseModel):
+    allow: bool
+
+
+@app.post("/api/remote/devices/{phone_id}/auto")
+def api_remote_auto(phone_id: str, body: RemoteAutoBody):
+    from . import remote as _remote
+
+    return _remote.set_allow_auto(phone_id, body.allow)
+
+
+@app.delete("/api/remote/devices/{phone_id}")
+def api_remote_forget(phone_id: str):
+    from . import remote as _remote
+
+    return _remote.forget(phone_id)
+
+
+class RemoteProjectBody(BaseModel):
+    path: str
+    share: bool
+
+
+@app.post("/api/remote/projects")
+def api_remote_projects(body: RemoteProjectBody):
+    from . import remote as _remote
+
+    return _remote.share_project(body.path, body.share)
 
 
 @app.post("/api/account/devices/{device_id}/revoke")
@@ -435,6 +516,70 @@ def project(workspace: str | None = None):
 @app.get("/api/skills")
 def skills_list(workspace: str | None = None):
     return {"skills": project_mod.list_skills(root(workspace))}
+
+
+@app.get("/api/skills/library")
+def skills_library(workspace: str | None = None):
+    from .project import library
+
+    have = {s["name"] for s in project_mod.list_skills(root(workspace))}
+    return {"categories": list(library.CATEGORIES),
+            "skills": [{**s, "installed": s["name"] in have} for s in library.library()]}
+
+
+class LibraryAddBody(BaseModel):
+    names: list[str]
+    scope: str = "project"
+    workspace: str | None = None
+
+
+@app.post("/api/skills/library")
+def skills_library_add(body: LibraryAddBody):
+    from .project import library
+
+    if body.scope not in project_mod.SKILL_SCOPES:
+        raise HTTPException(400, "scope must be 'project' or 'global'")
+    added = []
+    for name in body.names:
+        s = library.get(name)
+        if s:
+            project_mod.write_skill(root(body.workspace), s["name"], s["description"], s["content"], body.scope)
+            added.append(name)
+    return {"added": added}
+
+
+class SkillImportBody(BaseModel):
+    url: str
+    names: list[str] = []
+    scope: str = "project"
+    overwrite: bool = False
+    workspace: str | None = None
+
+
+@app.post("/api/skills/import/preview")
+def skills_import_preview(body: SkillImportBody):
+    from .project import skill_import
+
+    try:
+        return skill_import.public(skill_import.preview(root(body.workspace), body.url))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Could not reach GitHub: {e}")
+
+
+@app.post("/api/skills/import")
+def skills_import(body: SkillImportBody):
+    from .project import skill_import
+
+    if body.scope not in project_mod.SKILL_SCOPES:
+        raise HTTPException(400, "scope must be 'project' or 'global'")
+    try:
+        return skill_import.install(root(body.workspace), body.url, body.names, body.scope, body.overwrite)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Could not reach GitHub: {e}")
 
 
 @app.get("/api/skills/{name}")

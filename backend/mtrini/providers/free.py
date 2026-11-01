@@ -24,7 +24,7 @@ HEABSY_UPGRADE_URL = "https://platform.heabsy.com/r/mtrini"  # Heabsy partner re
 # Set when the relay is deployed; MTRINI_FREE_URL overrides it (tests, self-hosting).
 FREE_RELAY_URL = "https://mtrini-free.roblox-event-bot-worker.workers.dev"
 FREE_MODEL = "qwen38"
-FREE_LABEL = "Free, powered by Heabsy"
+FREE_LABEL = "Free · Heabsy"
 
 
 def free_relay_url() -> str:
@@ -95,7 +95,7 @@ class FreeProvider(OpenAICompatibleProvider):
             raise FreeModelError(_relay_message(e.response)) from None
 
     async def list_models(self, **kw: Any) -> list[ModelInfo]:
-        return [ModelInfo(id=FREE_MODEL, label=f"Qwen3.8 27B ({FREE_LABEL})", provider=self.name,
+        return [ModelInfo(id=FREE_MODEL, label="Qwen3.8 27B", provider=self.name,
                           contextLength=32768, capabilities={"text": True, "tools": True, "streaming": True})]
 
 

@@ -1,4 +1,4 @@
-// Mtrini Cloud, phase 1: accounts. Sign in with Google, Discord or GitHub; devices and sessions.
+// Mtrini Cloud: accounts (phase 1) and the phone-to-PC bridge entry point (phase 2, see bridge.js). Sign in with Google, Discord or GitHub; devices and sessions.
 //
 // Sign-in works without the app listening on any port:
 //   1. the app calls POST /auth/device and opens the returned link in a browser;
@@ -6,6 +6,8 @@
 //   3. the app polls POST /auth/device/poll until it receives its session token (once).
 // Session tokens and poll secrets are stored only as SHA-256 hashes. Plain JavaScript (Web Crypto,
 // fetch, a D1-style database), so the same code runs in the Worker and in Node tests.
+
+import { bridgeToken } from "./bridge.js";
 
 const LOGIN_TTL = 10 * 60; // seconds
 const SESSION_TTL = 90 * 24 * 3600;
@@ -56,7 +58,11 @@ export async function sha256(text) {
   return [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// The phone app calls the JSON API from its own origin. Auth is a bearer token (never a cookie),
+// so allowing any origin exposes nothing a script couldn't already do with the token.
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type",
+  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-max-age": "86400" };
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
 const err = (status, code, message) => json({ error: { code, message } }, status);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -108,9 +114,10 @@ async function profile(db, userId, deviceId) {
   return { user: u, identities: ids, devices: devs.map((d) => ({ ...d, current: d.id === deviceId })) };
 }
 
-async function deleteDevice(db, deviceId) {
+async function deleteDevice(db, deviceId, kick) {
   await run(db, "DELETE FROM sessions WHERE device_id = ?", deviceId);
   await run(db, "DELETE FROM devices WHERE id = ?", deviceId);
+  if (kick) await kick(deviceId);
 }
 
 // ---------------------------------------------------------------- OAuth
@@ -152,6 +159,8 @@ export async function handle(request, env, deps) {
   const providers = config(env);
   const method = request.method;
   let m;
+
+  if (method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   if (method === "GET" && (path === "/" || path === "/health")) {
     return json({ ok: true, service: "mtrini-cloud", providers: Object.keys(providers) });
@@ -287,21 +296,40 @@ export async function handle(request, env, deps) {
     return json({ status: "done", session_token: token, device_id: deviceId, ...(await profile(db, result.user_id, deviceId)) });
   }
 
+  // The live bridge: a WebSocket into this account's Bridge (token in the header or the subprotocols).
+  if (path === "/bridge") {
+    const { token, protocol } = bridgeToken(request);
+    const s = token ? await one(db, "SELECT * FROM sessions WHERE token_hash = ?", await sha256(token)) : null;
+    if (!s || s.expires_at < now) return err(401, "signed_out", "Sign in again.");
+    if (!deps.bridge) return err(501, "no_bridge", "The bridge is not available here.");
+    const dev = await one(db, "SELECT name FROM devices WHERE id = ?", s.device_id);
+    await run(db, "UPDATE devices SET last_seen = ? WHERE id = ?", now, s.device_id);
+    const headers = new Headers(request.headers);
+    headers.delete("authorization");
+    headers.set("x-mtrini-device", s.device_id);
+    headers.set("x-mtrini-device-name", (dev && dev.name) || "");
+    if (protocol) headers.set("x-mtrini-protocol", protocol);
+    return deps.bridge(s.user_id).fetch(new Request(request.url, { method: "GET", headers }));
+  }
+
   // Signed-in routes.
   const who = await authUser(request, db, now);
   if (!who) return err(401, "signed_out", "Sign in again.");
+  const kick = deps.bridge
+    ? (deviceId) => deps.bridge(who.userId).fetch(new Request(`https://bridge/kick?device=${encodeURIComponent(deviceId)}`)).catch(() => {})
+    : null;
 
   if (method === "GET" && path === "/me") return json(await profile(db, who.userId, who.deviceId));
 
   if (method === "POST" && path === "/auth/logout") {
-    await deleteDevice(db, who.deviceId);
+    await deleteDevice(db, who.deviceId, kick);
     return json({ ok: true });
   }
 
   if (method === "POST" && (m = /^\/devices\/([\w-]+)\/revoke$/.exec(path))) {
     const d = await one(db, "SELECT id FROM devices WHERE id = ? AND user_id = ?", m[1], who.userId);
     if (!d) return err(404, "unknown_device", "Unknown device.");
-    await deleteDevice(db, d.id);
+    await deleteDevice(db, d.id, kick);
     return json({ ok: true });
   }
 
@@ -313,7 +341,7 @@ export async function handle(request, env, deps) {
   }
 
   if (method === "DELETE" && path === "/me") {
-    for (const d of await all(db, "SELECT id FROM devices WHERE user_id = ?", who.userId)) await deleteDevice(db, d.id);
+    for (const d of await all(db, "SELECT id FROM devices WHERE user_id = ?", who.userId)) await deleteDevice(db, d.id, kick);
     await run(db, "DELETE FROM identities WHERE user_id = ?", who.userId);
     await run(db, "DELETE FROM logins WHERE link_user_id = ?", who.userId);
     await run(db, "DELETE FROM users WHERE id = ?", who.userId);

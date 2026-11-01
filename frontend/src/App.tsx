@@ -13,6 +13,7 @@ import Sidebar, { Nav } from './components/Sidebar';
 import ThreadView, { BUILTIN_COMMANDS, Img, Msg, PlanDecision, Todo } from './components/ThreadView';
 import TopBar from './components/TopBar';
 import { UpdateBanner } from './components/Updates';
+import { PairingPrompt } from './components/RemotePanel';
 import WorkspacePicker from './components/WorkspacePicker';
 
 /** Human-readable tool output: command results as their actual text, file reads as content. */
@@ -508,6 +509,7 @@ export default function App() {
         </div>
       )}
       <UpdateBanner />
+      <PairingPrompt />
       {toast && <div role="status" style={{ position: 'fixed', bottom: 20, right: 16, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px' }} onClick={() => setToast(null)}>{toast}</div>}
     </div>
   );

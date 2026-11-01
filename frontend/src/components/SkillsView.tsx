@@ -1,63 +1,157 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, type Skill, type SkillScope } from '../api/client';
+import { api, type ImportPreview, type LibrarySkill, type Skill, type SkillScope } from '../api/client';
 import { I } from './Icon';
 
-/** Starter skills offered when a project has none (or from "New skill"). */
-const TEMPLATES: { name: string; description: string; content: string }[] = [
-  {
-    name: 'code-review',
-    description: 'Review the current changes for bugs, risks and missing tests',
-    content: `1. Run \`git diff\` (and \`git diff --cached\`) to see what changed.
-2. Read each changed file around the edits, not just the diff hunks.
-3. List problems by severity: bugs first, then risky behavior, then missing tests, then style.
-4. For each problem give the file and line, what goes wrong, and a concrete fix.
-5. Do not edit files unless the user asks you to apply the fixes.`,
-  },
-  {
-    name: 'write-tests',
-    description: 'Add focused tests for the code that was just changed',
-    content: `1. Find the project's test framework and where existing tests live.
-2. Cover the changed behavior: the main path, edge cases and one failure case.
-3. Follow the style of nearby tests. Do not add new test dependencies without asking.
-4. Run the tests and fix failures in the tests (not the code) unless the code is wrong.
-5. Report which tests you added and the final test result.`,
-  },
-  {
-    name: 'commit-message',
-    description: 'Write a clear commit message for the staged changes',
-    content: `1. Run \`git diff --cached\`; if nothing is staged, use \`git diff\`.
-2. Write a subject line under 60 characters in the imperative mood ("Add", "Fix").
-3. Add a short body explaining why the change was made, if it is not obvious.
-4. Show the message to the user. Do not commit unless they ask.`,
-  },
-  {
-    name: 'explain-code',
-    description: 'Explain how a file or feature works, for a new contributor',
-    content: `1. Read the file or feature the user names, and the code it calls.
-2. Start with a two-sentence summary of what it does and why.
-3. Walk through the main flow in order, naming functions and files.
-4. Point out anything surprising: side effects, global state, known limitations.
-5. Keep it short; offer to go deeper on any part.`,
-  },
-];
-
 type Draft = { name: string; description: string; content: string; scope: SkillScope; isNew: boolean };
+type Panel = 'library' | 'import' | null;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const errText = (e: any) => String(e?.message || e).replace(/^\d+\s*/, '').replace(/^\{"detail":"(.*)"\}$/, '$1');
+
+/** Skill library: ready-made skills by category, each added in one click or opened in the editor. */
+function Library({ lib, categories, onAdd, onCustomize }: {
+  lib: LibrarySkill[]; categories: string[];
+  onAdd: (s: LibrarySkill) => void; onCustomize: (s: LibrarySkill) => void;
+}) {
+  const [cat, setCat] = useState('All');
+  const [q, setQ] = useState('');
+  const shown = lib.filter((s) => (cat === 'All' || s.category === cat)
+    && (!q.trim() || s.name.includes(q.trim().toLowerCase()) || s.description.toLowerCase().includes(q.trim().toLowerCase())));
+  return (
+    <div className="library">
+      <div className="row" style={{ alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <h3>Skill library</h3>
+        <span className="hint">{lib.filter((s) => s.installed).length} of {lib.length} added</span>
+      </div>
+      <p className="hint">Ready-made skills. Add one as it is, or open it in the editor and make it yours.</p>
+      <div className="searchfield" style={{ margin: '12px 0 8px' }}>
+        {I.search()}
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the library" aria-label="Search the library" />
+      </div>
+      <div className="cattabs" role="tablist" aria-label="Categories">
+        {['All', ...categories].map((c) => (
+          <button key={c} role="tab" aria-selected={cat === c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>
+        ))}
+      </div>
+      <div className="templates">
+        {shown.map((s) => (
+          <div key={s.name} className="card template">
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <strong className="mono">/{s.name}</strong>
+              <span className="hint">{s.category}</span>
+            </div>
+            <p className="hint">{s.description}</p>
+            <div className="row">
+              {s.installed
+                ? <span className="hint">{I.check()} Added</span>
+                : <button className="btn" onClick={() => onAdd(s)}>{I.plus()} Add</button>}
+              <button className="btn" onClick={() => onCustomize(s)}>Customize</button>
+            </div>
+          </div>
+        ))}
+        {shown.length === 0 && <p className="hint">No skills match.</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Import from GitHub: find SKILL.md files at a link, show them, write only the ones picked. */
+function ImportGitHub({ onDone }: { onDone: (added: string[]) => void }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [found, setFound] = useState<ImportPreview | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [scope, setScope] = useState<SkillScope>('project');
+  const [overwrite, setOverwrite] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const find = async () => {
+    if (!url.trim()) return;
+    setBusy(true); setErr(null); setFound(null); setResult(null);
+    try {
+      const f = await api.importPreview(url.trim());
+      setFound(f);
+      setPicked(new Set(f.skills.filter((s) => s.ok && !s.exists).map((s) => s.name)));
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const run = async () => {
+    if (!found || picked.size === 0) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.importSkills(url.trim(), [...picked], scope, overwrite);
+      const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => `/${s.name} (${s.reason.toLowerCase()})`).join(', ')}.` : '';
+      setResult(`Imported ${r.added.length} skill${r.added.length === 1 ? '' : 's'} from ${r.source}.${skipped}`);
+      onDone(r.added);
+      await find();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const toggle = (name: string) => setPicked((p) => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; });
+
+  return (
+    <div className="skill-import">
+      <h3>Import from GitHub</h3>
+      <p className="hint">Paste a repository, a folder or a SKILL.md link, like <code>github.com/owner/repo</code> or just <code>owner/repo</code>.
+        Only the SKILL.md instructions are imported; scripts and other files are never downloaded or run.</p>
+      <div className="notice" role="note">Imported skills become instructions the agent follows. Only import from sources you trust, and read a skill before you use it.</div>
+      <form className="row" style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); find(); }}>
+        <input className="t" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="github.com/owner/repo" aria-label="GitHub link" />
+        <button className="btn primary" type="submit" disabled={busy || !url.trim()}>{busy && !found ? 'Searching…' : 'Find skills'}</button>
+      </form>
+      {err && <div className="notice" role="alert" style={{ marginTop: 10 }}>{err}</div>}
+      {result && <div className="hint" role="status" style={{ marginTop: 10 }}>{result}</div>}
+      {found && (
+        <>
+          <label className="f">Found {found.skills.length} in {found.source} ({found.ref})</label>
+          <ul className="importlist">
+            {found.skills.map((s) => (
+              <li key={s.path}>
+                <label className={s.ok ? '' : 'off'}>
+                  <input type="checkbox" checked={picked.has(s.name)} disabled={!s.ok || (s.exists && !overwrite)} onChange={() => toggle(s.name)} />
+                  <span className="mono">/{s.name || '?'}</span>
+                  <span className="hint">{s.description}</span>
+                  {!s.ok && <span className="hint">{s.reason}</span>}
+                  {s.ok && s.exists && <span className="hint">Already installed</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="row" style={{ marginTop: 12, alignItems: 'center' }}>
+            <select className="t" value={scope} onChange={(e) => setScope(e.target.value as SkillScope)} aria-label="Install to">
+              <option value="project">This project</option>
+              <option value="global">All projects</option>
+            </select>
+            <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> Replace skills I already have
+            </label>
+            <button className="btn primary" onClick={run} disabled={busy || picked.size === 0}>
+              {busy ? 'Importing…' : `Import ${picked.size} skill${picked.size === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function SkillsView({ onUse }: { onUse: (text: string) => void }) {
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [lib, setLib] = useState<LibrarySkill[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Skill | null>(null);
   const [detail, setDetail] = useState<{ description: string; body: string } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setSkills((await api.skills()).skills || []); setError(null); }
-    catch { setError('Could not load skills. Is the backend running?'); }
+    try {
+      const [s, l] = await Promise.all([api.skills(), api.skillLibrary().catch(() => ({ categories: [], skills: [] }))]);
+      setSkills(s.skills || []); setLib(l.skills); setCategories(l.categories); setError(null);
+    } catch { setError('Could not load skills. Is the backend running?'); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -75,9 +169,9 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
     return q ? skills.filter((s) => s.name.includes(q) || s.description.toLowerCase().includes(q)) : skills;
   }, [skills, query]);
 
-  const startNew = (t?: (typeof TEMPLATES)[number]) => {
-    setSelected(null);
-    setError(null);
+  const open = (p: Panel) => { setSelected(null); setDraft(null); setError(null); setPanel(p); };
+  const startNew = (t?: { name: string; description: string; content: string }) => {
+    setSelected(null); setPanel(null); setError(null);
     setDraft({ name: t?.name || '', description: t?.description || '', content: t?.content || '', scope: 'project', isNew: true });
   };
 
@@ -92,9 +186,7 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
       setSelected({ name: draft.name, scope: draft.scope, description: draft.description });
       setDraft(null);
       setError(null);
-    } catch (e: any) {
-      setError(String(e.message || e).replace(/^\d+\s*/, '').replace(/^\{"detail":"(.*)"\}$/, '$1'));
-    } finally { setSaving(false); }
+    } catch (e: any) { setError(errText(e)); } finally { setSaving(false); }
   };
 
   const remove = async (s: Skill) => {
@@ -103,15 +195,12 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
     catch (e: any) { setError(`Delete failed: ${e.message || e}`); }
   };
 
-  const addTemplate = async (t: (typeof TEMPLATES)[number]) => {
-    try {
-      await api.saveSkill({ ...t, scope: 'project' });
-      await load();
-      setSelected({ name: t.name, scope: 'project', description: t.description });
-    } catch (e: any) { setError(`Could not add template: ${e.message || e}`); }
+  const addFromLibrary = async (s: LibrarySkill) => {
+    try { await api.addLibrarySkills([s.name], 'project'); await load(); }
+    catch (e: any) { setError(`Could not add /${s.name}: ${errText(e)}`); }
   };
 
-  const missingTemplates = TEMPLATES.filter((t) => !skills.some((s) => s.name === t.name));
+  const showPanel = panel ?? (!selected && !draft ? 'library' : null);
 
   return (
     <div className="skills">
@@ -120,17 +209,21 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
           <h2>Skills</h2>
           <button className="btn primary" onClick={() => startNew()}>{I.plus()} New skill</button>
         </div>
+        <div className="row" style={{ gap: 6, margin: '8px 0' }}>
+          <button className={`btn ${showPanel === 'library' ? 'on' : ''}`} onClick={() => open('library')}>Browse library</button>
+          <button className={`btn ${showPanel === 'import' ? 'on' : ''}`} onClick={() => open('import')}>Import from GitHub</button>
+        </div>
         <p className="hint">Reusable instructions for the agent. Type <code>/name</code> in a session to use one.</p>
         <div className="searchfield">
           {I.search()}
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search skills" aria-label="Search skills" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search my skills" aria-label="Search my skills" />
         </div>
         {loading ? <div className="hint" style={{ padding: 12 }}>Loading…</div> : (
           <ul>
             {shown.map((s) => (
               <li key={s.scope + s.name}>
                 <button className={`skillrow ${selected?.name === s.name && selected?.scope === s.scope && !draft ? 'on' : ''}`}
-                  onClick={() => { setDraft(null); setError(null); setSelected(s); }}>
+                  onClick={() => { setDraft(null); setPanel(null); setError(null); setSelected(s); }}>
                   <span className="skillname">/{s.name}</span>
                   <span className={`scope scope-${s.scope}`}>{s.scope}</span>
                   <span className="skilldesc">{s.description}</span>
@@ -138,6 +231,7 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
               </li>
             ))}
             {shown.length === 0 && skills.length > 0 && <li className="hint" style={{ padding: 12 }}>No skills match.</li>}
+            {skills.length === 0 && <li className="hint" style={{ padding: 12 }}>No skills yet. Add some from the library.</li>}
           </ul>
         )}
       </aside>
@@ -171,11 +265,11 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
               <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save skill'}</button>
               <button className="btn" onClick={() => { setDraft(null); setError(null); }}>Cancel</button>
             </div>
-            {draft.isNew && (
+            {draft.isNew && lib.length > 0 && (
               <>
-                <label className="f">Start from a template</label>
+                <label className="f">Start from the library</label>
                 <div className="chips">
-                  {TEMPLATES.map((t) => <button key={t.name} onClick={() => startNew(t)}>/{t.name}</button>)}
+                  {lib.slice(0, 12).map((t) => <button key={t.name} onClick={() => startNew(t)}>/{t.name}</button>)}
                 </div>
               </>
             )}
@@ -195,29 +289,10 @@ export default function SkillsView({ onUse }: { onUse: (text: string) => void })
             <label className="f">Instructions</label>
             <pre className="skillbody">{detail.body}</pre>
           </div>
+        ) : showPanel === 'import' ? (
+          <ImportGitHub onDone={() => load()} />
         ) : (
-          <div className="skills-empty">
-            <h3>{skills.length ? 'Pick a skill' : 'Teach Mtrini your workflows'}</h3>
-            <p className="hint">Skills are short instruction files the agent follows when you invoke them with <code>/name</code>.
-              They live in <code>.mtrini/skills/&lt;name&gt;/SKILL.md</code>, next to your code.</p>
-            {missingTemplates.length > 0 && (
-              <>
-                <label className="f">Starter skills</label>
-                <div className="templates">
-                  {missingTemplates.map((t) => (
-                    <div key={t.name} className="card template">
-                      <strong className="mono">/{t.name}</strong>
-                      <p className="hint">{t.description}</p>
-                      <div className="row">
-                        <button className="btn" onClick={() => addTemplate(t)}>{I.plus()} Add</button>
-                        <button className="btn" onClick={() => startNew(t)}>Customize</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <Library lib={lib} categories={categories} onAdd={addFromLibrary} onCustomize={(s) => startNew(s)} />
         )}
       </section>
     </div>

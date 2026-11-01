@@ -135,7 +135,7 @@ input.t, select.t, textarea.t { width: 100%; background: var(--bg2); border: 1px
 ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 8px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
 kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; margin-left: auto; white-space: nowrap; }
-.nav .sec { text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+.nav .sec { font-size: 12px; }
 .topbar { background: rgba(18,21,27,.7); backdrop-filter: blur(8px); }
 .metabtn { background: none; border: 1px solid transparent; color: var(--faint); font-size: 11px; cursor: pointer; border-radius: 6px; padding: 2px 8px; }
 .metabtn:hover { color: var(--text); border-color: var(--border); background: var(--bg2); }
@@ -180,7 +180,7 @@ html[data-density="compact"] .msg { padding-bottom: 12px; }
 html[data-density="compact"] .nav button { padding: 4px 9px; }
 html[data-density="compact"] .scroll { padding-top: 14px; }
 .btn.iconbtn { padding: 5px 8px; display: inline-flex; align-items: center; }
-.st { font-family: var(--mono); font-weight: 700; }
+.st { font-family: var(--mono); font-weight: 600; }
 .st-M { color: var(--accent); }
 .st-A { color: var(--accent2); }
 .st-D { color: var(--danger); }
@@ -189,138 +189,8 @@ html[data-density="compact"] .scroll { padding-top: 14px; }
 .runblock summary svg, .sendbtn svg, .topbar svg { vertical-align: -2px; }
 .file { display: flex; align-items: center; gap: 7px; }
 
-/* ---------- Liquid Glass (default theme) ---------- */
 html[data-accent="teal"] { --accent: #0e9f7a; }
-html[data-theme="glass"] {
-  --bg: rgba(255,255,255,.42); --bg2: rgba(255,255,255,.58); --bg3: rgba(255,255,255,.72);
-  --bubble: rgba(255,255,255,.78);
-  --border: rgba(255,255,255,.75);
-  --text: #1b2a22; --muted: #54695c; --faint: #89a092;
-  --accent: #0e9f7a; --accent2: #0e9f7a; --warn: #bd7f1c; --danger: #d1534f;
-}
-html[data-theme="glass"] body {
-  background:
-    radial-gradient(1100px 700px at 12% -10%, rgba(255,255,255,.85), transparent 60%),
-    radial-gradient(900px 900px at 88% 8%, rgba(168,211,192,.9), transparent 62%),
-    radial-gradient(1000px 800px at 75% 95%, rgba(214,236,205,.95), transparent 60%),
-    radial-gradient(1400px 1000px at 8% 100%, rgba(140,190,168,.75), transparent 65%),
-    linear-gradient(160deg, #dcefe3 0%, #cfe6d8 34%, #dfeee4 58%, #cfe3d3 100%);
-  background-attachment: fixed;
-}
-html[data-theme="glass"] .shell { background: transparent; }
-html[data-theme="glass"] .win {
-  background: rgba(255,255,255,.28);
-  border: 1px solid rgba(255,255,255,.65);
-  box-shadow: 0 24px 80px rgba(45,85,64,.22), inset 0 1px 0 rgba(255,255,255,.8);
-  backdrop-filter: blur(28px) saturate(1.5);
-}
-html[data-theme="glass"] .side,
-html[data-theme="glass"] .diffpanel,
-html[data-theme="glass"] .topbar,
-html[data-theme="glass"] .box,
-html[data-theme="glass"] .card,
-html[data-theme="glass"] .sheet,
-html[data-theme="glass"] .cmdsheet,
-html[data-theme="glass"] .dfile,
-html[data-theme="glass"] .codeblock,
-html[data-theme="glass"] .runblock,
-html[data-theme="glass"] .pillselect,
-html[data-theme="glass"] input.t,
-html[data-theme="glass"] select.t,
-html[data-theme="glass"] textarea.t,
-html[data-theme="glass"] .tabs button,
-html[data-theme="glass"] .chips button,
-html[data-theme="glass"] .tag {
-  background: rgba(255,255,255,.55);
-  border: 1px solid rgba(255,255,255,.7);
-  box-shadow: 0 6px 24px rgba(45,85,64,.10), inset 0 1px 0 rgba(255,255,255,.85);
-  backdrop-filter: blur(22px) saturate(1.5);
-  color: var(--text);
-}
-html[data-theme="glass"] .topbar { background: rgba(255,255,255,.45); }
-html[data-theme="glass"] .side { background: rgba(255,255,255,.38); }
-html[data-theme="glass"] .diffpanel { background: rgba(255,255,255,.38); }
-html[data-theme="glass"] .nav button:hover, html[data-theme="glass"] .trow.on, html[data-theme="glass"] .nav button.on,
-html[data-theme="glass"] .file:hover, html[data-theme="glass"] .cmdlist .cmd.on,
-html[data-theme="glass"] .runblock summary:hover {
-  background: rgba(255,255,255,.75);
-}
-html[data-theme="glass"] .userpill span {
-  background: rgba(255,255,255,.82);
-  border: 1px solid rgba(255,255,255,.9);
-  box-shadow: 0 6px 20px rgba(45,85,64,.14), inset 0 1px 0 #fff;
-  backdrop-filter: blur(16px);
-}
-html[data-theme="glass"] .assistant code { background: rgba(255,255,255,.65); }
-html[data-theme="glass"] .assistant pre,
-html[data-theme="glass"] .codeblock pre,
-html[data-theme="glass"] .runblock pre,
-html[data-theme="glass"] .dfile pre {
-  background: rgba(255,255,255,.45);
-}
-html[data-theme="glass"] .assistant a, html[data-theme="glass"] .chips button { color: #0b7a5c; }
-html[data-theme="glass"] .difftext .add { background: rgba(14,159,122,.13); color: #0b6e54; }
-html[data-theme="glass"] .difftext .del { background: rgba(209,83,79,.12); color: #b03a37; }
-html[data-theme="glass"] .difftext .hunk { color: #0b7a5c; }
-html[data-theme="glass"] .btn { background: rgba(255,255,255,.6); border-color: rgba(255,255,255,.8); color: var(--text); }
-html[data-theme="glass"] .btn.primary { background: #1d3a2c; border-color: #1d3a2c; color: #f2f7f3; box-shadow: 0 8px 22px rgba(29,58,44,.35); }
-html[data-theme="glass"] .sendbtn { background: rgba(255,255,255,.7); }
-html[data-theme="glass"] .sendbtn.ready { background: #1d3a2c; color: #f2f7f3; box-shadow: 0 8px 20px rgba(29,58,44,.35); }
-html[data-theme="glass"] .sendbtn.stop { background: var(--danger); border-color: var(--danger); color: #fff; }
-html[data-theme="glass"] .pillselect.on { border-color: var(--accent); color: #0b7a5c; }
-html[data-theme="glass"] .term { background: rgba(17,30,23,.82); border-top: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(20px); }
-html[data-theme="glass"] .term input { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.2); color: #e6f2ea; }
-html[data-theme="glass"] .modal { background: rgba(70,100,82,.28); backdrop-filter: blur(6px); }
-html[data-theme="glass"] .cmdsheet input { color: var(--text); }
-html[data-theme="glass"] .traffic i { box-shadow: inset 0 0 2px rgba(0,0,0,.2), 0 1px 3px rgba(0,0,0,.15); }
-html[data-theme="glass"] ::-webkit-scrollbar-thumb { background: rgba(90,140,115,.45); border: 2px solid transparent; background-clip: content-box; }
-html[data-theme="glass"] :focus-visible { outline-color: var(--accent); }
-html[data-theme="glass"] .st-M { color: #0b7a5c; }
-html[data-theme="glass"] .st-A { color: #0e9f7a; }
-html[data-theme="glass"] .herologo { filter: drop-shadow(0 8px 24px rgba(20,60,40,.35)); }
-html[data-theme="glass"] .box:focus-within { border-color: rgba(14,159,122,.6); box-shadow: 0 0 0 3px rgba(14,159,122,.15); }
 
-/* accent re-tints the whole liquid glass */
-html[data-theme="glass"][data-accent="blue"] body {
-  background:
-    radial-gradient(1100px 700px at 12% -10%, rgba(255,255,255,.9), transparent 60%),
-    radial-gradient(900px 900px at 88% 8%, rgba(168,196,230,.9), transparent 62%),
-    radial-gradient(1000px 800px at 75% 95%, rgba(205,222,245,.95), transparent 60%),
-    radial-gradient(1400px 1000px at 8% 100%, rgba(150,175,215,.75), transparent 65%),
-    linear-gradient(160deg, #dde8f5 0%, #cfddf0 34%, #dfe9f5 58%, #ccd9ec 100%);
-  background-attachment: fixed;
-}
-html[data-theme="glass"][data-accent="blue"] { --accent: #2f6fed; }
-html[data-theme="glass"][data-accent="green"] body {
-  background:
-    radial-gradient(1100px 700px at 12% -10%, rgba(255,255,255,.9), transparent 60%),
-    radial-gradient(900px 900px at 88% 8%, rgba(150,220,180,.9), transparent 62%),
-    radial-gradient(1000px 800px at 75% 95%, rgba(200,240,205,.95), transparent 60%),
-    radial-gradient(1400px 1000px at 8% 100%, rgba(125,195,150,.75), transparent 65%),
-    linear-gradient(160deg, #d8f0dd 0%, #c6e8cf 34%, #ddf2e2 58%, #c4e5cb 100%);
-  background-attachment: fixed;
-}
-html[data-theme="glass"][data-accent="green"] { --accent: #189a6c; }
-html[data-theme="glass"][data-accent="violet"] body {
-  background:
-    radial-gradient(1100px 700px at 12% -10%, rgba(255,255,255,.9), transparent 60%),
-    radial-gradient(900px 900px at 88% 8%, rgba(190,175,235,.9), transparent 62%),
-    radial-gradient(1000px 800px at 75% 95%, rgba(222,210,248,.95), transparent 60%),
-    radial-gradient(1400px 1000px at 8% 100%, rgba(165,150,215,.75), transparent 65%),
-    linear-gradient(160deg, #e6def8 0%, #d5c9f0 34%, #e7ddf9 58%, #d3c6ee 100%);
-  background-attachment: fixed;
-}
-html[data-theme="glass"][data-accent="violet"] { --accent: #6f5df0; }
-html[data-theme="glass"][data-accent="amber"] body {
-  background:
-    radial-gradient(1100px 700px at 12% -10%, rgba(255,255,255,.9), transparent 60%),
-    radial-gradient(900px 900px at 88% 8%, rgba(235,205,160,.9), transparent 62%),
-    radial-gradient(1000px 800px at 75% 95%, rgba(248,230,195,.95), transparent 60%),
-    radial-gradient(1400px 1000px at 8% 100%, rgba(215,180,130,.75), transparent 65%),
-    linear-gradient(160deg, #f5e8d2 0%, #eedcbd 34%, #f6ead4 58%, #ecd8b8 100%);
-  background-attachment: fixed;
-}
-html[data-theme="glass"][data-accent="amber"] { --accent: #b97a17; }
 
 /* images gallery + mcp */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin: 12px 0; }
@@ -330,11 +200,9 @@ html[data-theme="glass"][data-accent="amber"] { --accent: #b97a17; }
 .shot footer span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shot footer button { background: none; border: 0; color: var(--faint); cursor: pointer; }
 .shot footer button:hover { color: var(--danger); }
-html[data-theme="glass"] .shot { background: rgba(255,255,255,.55); backdrop-filter: blur(18px); box-shadow: 0 8px 24px rgba(45,85,64,.12); }
 
 /* =====================================================================
    Compiwer design system: matches the Compiwer AI website (light + dark).
-   Liquid glass remains available as an alternate theme.
    ===================================================================== */
 :root {
   --font: 'DM Sans Variable', 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -424,7 +292,7 @@ html[data-theme="light"] .card, html[data-theme="dark"] .card,
 html[data-theme="light"] .sheet, html[data-theme="dark"] .sheet,
 html[data-theme="light"] .cmdsheet, html[data-theme="dark"] .cmdsheet { border-radius: 16px; background: var(--bg2); box-shadow: 0 1px 2px rgba(16,24,40,.04); }
 html[data-theme="light"] .cmdsheet, html[data-theme="dark"] .cmdsheet { box-shadow: 0 24px 70px rgba(16,24,40,.22); }
-label.f { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-top: 14px; }
+label.f { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 16px; }
 html[data-theme="light"] .modal { background: rgba(17, 24, 39, .28); }
 
 /* Side panel + tabs */
@@ -453,7 +321,7 @@ html[data-theme="light"] .herologo, html[data-theme="dark"] .herologo { filter: 
    Session layout (agent-first, in the style of modern coding agents)
    ===================================================================== */
 .mono { font-family: var(--mono); }
-.label-caps { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+.label-caps { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
 
 /* Sidebar: new session button */
 .newsession {
@@ -535,7 +403,7 @@ html[data-theme="light"] .herologo, html[data-theme="dark"] .herologo { filter: 
 .slashmenu button.on { background: var(--bg3); }
 .slashmenu .mono { color: var(--accent); font-size: 13px; }
 .slashmenu .sdesc { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slashmenu .skind { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.slashmenu .skind { color: var(--faint); font-size: 12px; }
 
 /* Skills manager */
 .skills { flex: 1; display: grid; grid-template-columns: 340px minmax(0, 1fr); min-height: 0; }
@@ -553,7 +421,7 @@ html[data-theme="light"] .herologo, html[data-theme="dark"] .herologo { filter: 
 .skillrow:hover, .skillrow.on { background: var(--bg3); }
 .skillname { font-family: var(--mono); font-size: 13px; font-weight: 500; }
 .skilldesc { grid-column: 1 / -1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scope { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 1px 7px; border-radius: 6px; align-self: center; }
+.scope { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 6px; align-self: center; }
 .scope-project { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .scope-global { color: var(--muted); background: var(--bg3); }
 .skills-detail { padding: 26px 32px; overflow-y: auto; min-width: 0; }
@@ -638,3 +506,47 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .composer .bar .pillselect { min-width: 0; flex: 0 1 auto; max-width: 180px; text-overflow: ellipsis; }
 .composer .bar .pillselect.mode { max-width: 150px; }
 .composer .bar .sendbtn { flex: none; }
+
+/* Skill library and Import from GitHub */
+.library, .skill-import { max-width: 860px; }
+.library .templates { margin-top: 14px; }
+.cattabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 4px; }
+.cattabs button { font: inherit; font-size: 13px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.cattabs button:hover { color: var(--text); background: var(--bg3); }
+.cattabs button.on { color: var(--text); background: var(--bg3); border-color: var(--border); }
+.btn.on { background: var(--bg3); border-color: var(--border); }
+.importlist { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.importlist label { display: grid; grid-template-columns: 20px auto 1fr auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); cursor: pointer; }
+.importlist label.off { opacity: .6; cursor: default; }
+.importlist .hint { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; z-index: 60; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; width: min(440px, calc(100vw - 32px)); }
+
+/* Remote access */
+.remote { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+.remote h3 { margin: 0 0 8px; font-size: 16px; }
+.remote .setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0; }
+.pairing h3 { margin: 0 0 6px; font-size: 18px; }
+.paircode { font-size: 40px; letter-spacing: .12em; text-align: center; margin: 14px 0; padding: 12px; border-radius: 12px; background: var(--bg3); color: var(--text); }
+
+/* ---------- Phone (Android app) ---------- */
+html.phone, html.phone body { height: 100%; }
+.phone-screen { max-width: 480px; margin: 0 auto; min-height: 100vh; padding: 48px 20px 32px; display: flex; flex-direction: column; gap: 12px; }
+.phone-screen h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+.phone-screen .hint { margin: 0; }
+.phone-logo { width: 72px; height: 72px; border-radius: 18px; margin-bottom: 8px; }
+.btn.wide { width: 100%; justify-content: center; min-height: 48px; font-size: 15px; }
+.btn.listbtn { flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; padding: 12px 16px; }
+.btn.listbtn .hint { font-size: 12px; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+.phone-app { height: 100vh; display: flex; flex-direction: column; }
+.phone-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.phone-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.phone-app .shell { flex: 1; min-height: 0; height: auto; padding: 0; }
+.phone-app .win { border: 0; border-radius: 0; }
+.phone-app .side { position: fixed; top: 0; bottom: 0; left: 0; width: min(300px, 84vw); z-index: 40; transform: translateX(-100%); transition: transform .2s ease; }
+html.side-open .phone-app .side { transform: none; }
+.phone-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 39; }
+.phone-app .diffpanel { display: none; }
+.phone-app .topbar .btn:not(.iconbtn) { display: none; }
+.phone-app .starters { grid-template-columns: 1fr; }
