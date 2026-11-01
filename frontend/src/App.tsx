@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { api, getWorkspace, setExecOverride, setWorkspace, sse, touchRecent } from './api/client';
+import { api, getRecents, getWorkspace, rawRequest, setExecOverride, setWorkspace, sse, touchRecent } from './api/client';
 import CommandMenu, { ActionId } from './components/CommandMenu';
 import { applySettings, loadSettings, saveSettings } from './lib/settings';
 import DiffPanel from './components/DiffPanel';
 import FilesView from './components/FilesView';
 import ImagesView from './components/ImagesView';
+import MailView from './components/MailView';
 import MCPView from './components/MCPView';
 import { AutomationsView } from './components/Panels';
 import SkillsView from './components/SkillsView';
@@ -42,7 +43,7 @@ function threadMsg(m: any): Msg {
 }
 
 const NAV_TITLES: Record<Nav, string> = {
-  thread: '', files: 'Files', images: 'Images', mcp: 'MCP servers', automations: 'Automations', skills: 'Skills', settings: 'Settings',
+  thread: '', files: 'Files', images: 'Images', mcp: 'MCP servers', automations: 'Automations', skills: 'Skills', mail: 'Mail', settings: 'Settings',
 };
 
 export default function App() {
@@ -107,6 +108,8 @@ export default function App() {
     } catch { setHooksUntrusted(false); }
   }, [loadThreads]);
 
+  // projects opened before cloud sync existed: tell the backend about them so their sessions get saved too
+  useEffect(() => { api.rememberWorkspaces(getRecents()).catch(() => {}); }, []);
   useEffect(() => {
     applySettings(loadSettings());
     loadContext();
@@ -452,6 +455,7 @@ export default function App() {
               await openThread(tid);
               send(prompt);
             }} />}
+            {nav === 'mail' && <MailView call={(p, init) => rawRequest(`/api${p}`, init)} onToast={setToast} />}
             {nav === 'settings' && <div className="view"><SettingsPanel onToast={setToast} /></div>}
             {diffOpen && (nav === 'thread' || nav === 'files') && <DiffPanel tick={diffTick} />}
           </div>

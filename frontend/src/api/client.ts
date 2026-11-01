@@ -51,6 +51,11 @@ function inject(url: string, init?: RequestInit, pin?: boolean): { url: string; 
   return { url, init };
 }
 
+/** A request to the backend with no workspace added and no error thrown: for callers that read error bodies. */
+export function rawRequest(url: string, init: RequestInit = {}) {
+  return transport(BASE + url, { ...init, headers: { 'content-type': 'application/json', ...(init.headers || {}) } });
+}
+
 async function j<T>(url: string, init?: RequestInit, opts?: { pin?: boolean }): Promise<T> {
   const w = inject(url, init, opts?.pin);
   const r = await transport(BASE + w.url, { ...w.init, headers: { 'content-type': 'application/json', ...(w.init?.headers || {}) } });
@@ -130,6 +135,10 @@ export const api = {
   setRemoteAuto: (id: string, allow: boolean) => j<any>(`/api/remote/devices/${encodeURIComponent(id)}/auto`, { method: 'POST', body: JSON.stringify({ allow }) }),
   forgetRemote: (id: string) => j<any>(`/api/remote/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   shareRemoteProject: (path: string, share: boolean) => j<any>('/api/remote/projects', { method: 'POST', body: JSON.stringify({ path, share }) }),
+  setRemoteFull: (id: string, allow: boolean) => j<any>(`/api/remote/devices/${encodeURIComponent(id)}/full`, { method: 'POST', body: JSON.stringify({ allow }) }),
+  cloudSync: () => j<any>('/api/cloud/sync'),
+  setCloudSync: (enabled: boolean) => j<any>('/api/cloud/sync', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  rememberWorkspaces: (paths: string[]) => j<any>('/api/cloud/workspaces', { method: 'POST', body: JSON.stringify({ paths, workspace: null }) }),
   account: () => j<any>('/api/account'),
   accountLogin: (provider: string, link = false) =>
     j<{ loginId: string; url: string; interval: number }>('/api/account/login', { method: 'POST', body: JSON.stringify({ provider, link }) }),

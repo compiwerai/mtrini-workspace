@@ -148,3 +148,11 @@ test("health and models answer without a key", async () => {
   const m = await (await handle(new Request("https://relay.test/v1/models"), {}, {})).json();
   assert.equal(m.data[0].id, "qwen38");
 });
+
+test("the phone app may call the relay from its own origin (CORS)", async () => {
+  const pre = await handle(new Request("https://relay.test/v1/chat/completions", { method: "OPTIONS" }), {}, {});
+  assert.equal(pre.status, 204);
+  assert.match(pre.headers.get("access-control-allow-headers"), /x-mtrini-install/);
+  const h = await handle(new Request("https://relay.test/health"), {}, {});
+  assert.equal(h.headers.get("access-control-allow-origin"), "*");
+});

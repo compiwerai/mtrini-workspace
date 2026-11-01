@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import App from '../App';
 import { setTransport, setWorkspace } from '../api/client';
+import MailView from '../components/MailView';
+import { I } from '../components/Icon';
 import { PhoneBridge, type PC } from '../remote/bridge';
+import { Cloud } from '../remote/cloud';
+import CloudSessions from './CloudSessions';
 
 /**
- * The Android app: sign in to Mtrini Cloud, pick your PC, pair once (compare a 6-digit code, approve on the PC),
- * pick a shared project, then use the normal app, with every request going to the PC through the encrypted bridge.
+ * The Android app. Sessions: everything your PCs saved to Mtrini Cloud, readable and workable even with the PC off.
+ * PCs: pair once (compare a 6-digit code, approve on the PC), then use the full app live, every request going to
+ * the PC through the encrypted bridge. Mail: Mtrini Mail.
  */
 const CLOUD = ((import.meta as any).env?.VITE_CLOUD || 'https://mtrini-cloud.roblox-event-bot-worker.workers.dev').replace(/\/+$/, '');
 const SESSION = 'mtrini.phone.session';
@@ -64,8 +69,12 @@ function SignIn({ onDone }: { onDone: (s: Session) => void }) {
   );
 }
 
+type Tab = 'sessions' | 'pcs' | 'mail';
+
 export default function PhoneShell() {
   const [session, setSession] = useState<Session | null>(loadSession);
+  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem('mtrini.phone.tab') as Tab) || 'sessions');
+  const [devices, setDevices] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('mtrini.phone.devices') || '{}'); } catch { return {}; } });
   const [, tick] = useState(0);
   const [pc, setPc] = useState<PC | null>(null);
   const [pairing, setPairing] = useState<{ pc: PC; code: string; error?: string } | null>(null);
@@ -74,6 +83,16 @@ export default function PhoneShell() {
   const [menu, setMenu] = useState(false);
 
   const bridge = useMemo(() => (session ? new PhoneBridge(CLOUD, session.token, session.deviceId, session.name) : null), [session]);
+  const cloud = useMemo(() => (session ? new Cloud(CLOUD, session.token) : null), [session]);
+  useEffect(() => { localStorage.setItem('mtrini.phone.tab', tab); }, [tab]);
+  useEffect(() => {
+    if (!cloud) return;
+    cloud.me().then((me) => {
+      const map = Object.fromEntries((me.devices || []).map((d: any) => [d.id, d.name || 'Device']));
+      setDevices(map);
+      localStorage.setItem('mtrini.phone.devices', JSON.stringify(map));
+    }).catch((e) => { if (e.status === 401) { localStorage.removeItem(SESSION); setSession(null); } });
+  }, [cloud]);
   useEffect(() => {
     document.documentElement.classList.add('phone');
     if (!bridge) return;
@@ -91,7 +110,13 @@ export default function PhoneShell() {
       .catch(() => setProjects([]));
   }, [bridge, pc, pairing]);
 
-  if (!session || !bridge) return <SignIn onDone={setSession} />;
+  if (!session || !bridge || !cloud) return <SignIn onDone={setSession} />;
+  const folderName = (p: string) => p.split(/[\/]/).filter(Boolean).pop() || p;
+  const openLive = (pcId: string, path: string) => {
+    const target = bridge.pcs.find((p) => p.id === pcId);
+    if (!target) return;
+    setTransport(bridge.transport(pcId)); setWorkspace(path); setReady({ pc: target, project: { path, name: folderName(path) } });
+  };
 
   if (ready) {
     const online = bridge.pcs.some((p) => p.id === ready.pc.id);
@@ -100,7 +125,7 @@ export default function PhoneShell() {
         <header className="phone-bar">
           <button className="btn iconbtn" aria-label="Menu" onClick={() => setMenu((v) => !v)}>☰</button>
           <span className="phone-title">{ready.project.name} <span className="hint">on {ready.pc.name}</span></span>
-          <button className="btn" onClick={() => { setTransport(null); setReady(null); }}>Switch</button>
+          <button className="btn" onClick={() => { setTransport(null); setReady(null); setMenu(false); }}>Done</button>
         </header>
         {!online && <div className="notice">Your PC is offline. Requests will work again when it reconnects.</div>}
         {menu && <div className="phone-scrim" onClick={() => setMenu(false)} />}
@@ -110,24 +135,38 @@ export default function PhoneShell() {
   }
 
   const signOut = () => { bridge.close(); localStorage.removeItem(SESSION); setSession(null); };
+  const tabs = (
+    <nav className="phone-tabs" aria-label="Sections">
+      <button className={tab === 'sessions' ? 'on' : ''} onClick={() => setTab('sessions')}>{I.cloud()}<span>Sessions</span></button>
+      <button className={tab === 'pcs' ? 'on' : ''} onClick={() => setTab('pcs')}>{I.terminal()}<span>PCs</span></button>
+      <button className={tab === 'mail' ? 'on' : ''} onClick={() => setTab('mail')}>{I.mail()}<span>Mail</span></button>
+    </nav>
+  );
+  if (tab === 'sessions') {
+    return <div className="phone-tabbed"><CloudSessions cloud={cloud} bridge={bridge} devices={devices} onLive={openLive} />{tabs}</div>;
+  }
+  if (tab === 'mail') {
+    return <div className="phone-tabbed"><div className="phone-mail"><MailView call={(p, init) => cloud.call(p, init)} /></div>{tabs}</div>;
+  }
 
   if (pairing) {
     return (
-      <div className="phone-screen">
+      <div className="phone-screen phone-tabbed-pad">
         <h1>Pair with {pairing.pc.name}</h1>
         <p className="hint">Check that your PC shows this same code, then press Approve on the PC.</p>
         <div className="paircode mono">{spaced(pairing.code)}</div>
         {pairing.error ? <p className="notice" role="alert">{pairing.error}</p> : <p className="hint">Waiting for your PC…</p>}
         <button className="btn wide" onClick={() => setPairing(null)}>Back</button>
+        {tabs}
       </div>
     );
   }
 
   if (pc && bridge.isPaired(pc.id)) {
     return (
-      <div className="phone-screen">
+      <div className="phone-screen phone-tabbed-pad">
         <h1>Pick a project</h1>
-        <p className="hint">These are the projects shared from {pc.name}. Share more in Settings → Account → Remote access on your PC.</p>
+        <p className="hint">Projects on {pc.name} this phone can use. Share more in Settings → Account → Remote access on your PC, or give this phone Full access there.</p>
         {projects === null && <p className="hint">Loading…</p>}
         {projects?.length === 0 && <p className="hint">Nothing is shared yet. On your PC, open a project and choose “Share with my phone”.</p>}
         {projects?.map((p) => (
@@ -136,12 +175,13 @@ export default function PhoneShell() {
           }}><strong>{p.name}</strong><span className="hint">{p.path}</span></button>
         ))}
         <button className="btn wide" onClick={() => setPc(null)}>Back</button>
+        {tabs}
       </div>
     );
   }
 
   return (
-    <div className="phone-screen">
+    <div className="phone-screen phone-tabbed-pad">
       <h1>Your PCs</h1>
       <p className="hint">{bridge.status === 'online' ? 'PCs with Remote access turned on show up here.' : 'Connecting to Mtrini Cloud…'}</p>
       {bridge.pcs.length === 0 && bridge.status === 'online' && (
@@ -156,7 +196,9 @@ export default function PhoneShell() {
           done.then(() => setPairing(null)).catch((e) => setPairing({ pc: p, code, error: String(e.message || e) }));
         }}><strong>{p.name}</strong><span className="hint">{bridge.isPaired(p.id) ? 'Paired' : 'Tap to pair'}</span></button>
       ))}
+      <p className="hint">Pair a PC once to use it live from here, and to send it work while it's off.</p>
       <button className="btn wide" onClick={signOut}>Sign out</button>
+      {tabs}
     </div>
   );
 }

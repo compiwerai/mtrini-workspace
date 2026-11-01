@@ -88,3 +88,11 @@ class Opener:
         self.seen = {k: t for k, t in self.seen.items() if now - t < MAX_AGE * 2}
         self.seen[mid] = now
         return body
+
+
+def open_sealed(key: bytes, sender: str, receiver: str, box: dict) -> dict:
+    """Decrypt one sealed message with no age limit: for work queued in the cloud that runs later.
+    The caller refuses repeats (by task id)."""
+    if not isinstance(box, dict) or box.get("v") != 1:
+        raise ValueError("unknown message format")
+    return json.loads(AESGCM(key).decrypt(unb64u(box["iv"]), unb64u(box["c"]), f"{sender}>{receiver}".encode()))

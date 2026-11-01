@@ -4,7 +4,7 @@ import { api, getWorkspace } from '../api/client';
 export type RemoteState = {
   enabled: boolean; signedIn: boolean; connected: boolean; error: string;
   phonesOnline: { id: string; name: string }[];
-  paired: { id: string; name: string; pairedAt: number; allowAuto: boolean }[];
+  paired: { id: string; name: string; pairedAt: number; allowAuto: boolean; full: boolean }[];
   pending: { id: string; name: string; code: string }[];
   projects: string[];
 };
@@ -70,10 +70,20 @@ export default function RemotePanel({ onToast }: { onToast: (s: string) => void 
             <div className="setrow" key={p.id}>
               <div><strong>{p.name || 'Phone'}</strong>
                 <p className="hint">Paired {new Date(p.pairedAt * 1000).toLocaleDateString()}</p></div>
-              <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input type="checkbox" checked={p.allowAuto} onChange={(e) => act(() => api.setRemoteAuto(p.id, e.target.checked))} />
-                Allow Auto mode
+              <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}
+                title="Everything the app can do, in every project, including settings and Auto mode. Remote access itself stays PC-only.">
+                <input type="checkbox" checked={p.full} onChange={(e) => {
+                  if (e.target.checked && !confirm(`Give ${p.name || 'this phone'} full access? It can do everything the app can on this PC, in any project, including settings, keys and Auto mode. Only turning remote access on or off stays here.`)) return;
+                  act(() => api.setRemoteFull(p.id, e.target.checked), e.target.checked ? 'Full access on' : 'Full access off');
+                }} />
+                Full access
               </label>
+              {!p.full && (
+                <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="checkbox" checked={p.allowAuto} onChange={(e) => act(() => api.setRemoteAuto(p.id, e.target.checked))} />
+                  Allow Auto mode
+                </label>
+              )}
               <button className="btn" onClick={() => act(() => api.forgetRemote(p.id), 'Phone removed')}>Forget</button>
             </div>
           ))}

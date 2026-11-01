@@ -119,6 +119,7 @@ export default function AccountPanel({ onToast }: { onToast: (s: string) => void
         </div>
       ))}
 
+      <CloudSyncRow onToast={onToast} />
       <RemotePanel onToast={onToast} />
 
       <div className="row" style={{ marginTop: 18 }}>
@@ -129,6 +130,36 @@ export default function AccountPanel({ onToast }: { onToast: (s: string) => void
           }
         }}>Delete account</button>
       </div>
+    </div>
+  );
+}
+
+/** Save this PC's sessions to Mtrini Cloud, so the phone has them even when the PC is off. */
+function CloudSyncRow({ onToast }: { onToast: (s: string) => void }) {
+  const [st, setSt] = React.useState<any>(null);
+  React.useEffect(() => {
+    let live = true;
+    const load = () => api.cloudSync().then((s) => { if (live) setSt(s); }).catch(() => {});
+    load();
+    const t = window.setInterval(load, 5000);
+    return () => { live = false; window.clearInterval(t); };
+  }, []);
+  if (!st) return null;
+  const line = !st.enabled ? 'Off. Sessions stay only on this PC.'
+    : st.error || (st.lastSync ? `Up to date · ${st.sessions} session${st.sessions === 1 ? '' : 's'} saved · ${new Date(st.lastSync * 1000).toLocaleTimeString()}` : 'Saving…');
+  return (
+    <div className="remote">
+      <h3>Cloud sync</h3>
+      <div className="setrow">
+        <div>
+          <strong>Save my sessions to Mtrini Cloud</strong>
+          <p className="hint">Your sessions open on your phone and other devices, even when this PC is off. Mtrini Cloud stores them
+            and can read them. Big tool outputs and images stay on this PC.</p>
+        </div>
+        <input type="checkbox" aria-label="Cloud sync" checked={st.enabled}
+          onChange={async (e) => { try { setSt(await api.setCloudSync(e.target.checked)); onToast(e.target.checked ? 'Cloud sync on' : 'Cloud sync off'); } catch (er: any) { onToast(String(er.message || er)); } }} />
+      </div>
+      <p className="hint">{line}{st.task ? ` · Running a task from your phone: “${st.task.prompt}”` : ''}</p>
     </div>
   );
 }

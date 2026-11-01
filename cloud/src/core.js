@@ -1,4 +1,4 @@
-// Mtrini Cloud: accounts (phase 1) and the phone-to-PC bridge entry point (phase 2, see bridge.js). Sign in with Google, Discord or GitHub; devices and sessions.
+// Mtrini Cloud: accounts, the phone-to-PC bridge entry point (bridge.js), session sync (sync.js) and Mtrini Mail (mail.js). Sign in with Google, Discord or GitHub; devices and sessions.
 //
 // Sign-in works without the app listening on any port:
 //   1. the app calls POST /auth/device and opens the returned link in a browser;
@@ -8,6 +8,9 @@
 // fetch, a D1-style database), so the same code runs in the Worker and in Node tests.
 
 import { bridgeToken } from "./bridge.js";
+import { all, CORS, err, json, one, run } from "./http.js";
+import * as mail from "./mail.js";
+import * as sync from "./sync.js";
 
 const LOGIN_TTL = 10 * 60; // seconds
 const SESSION_TTL = 90 * 24 * 3600;
@@ -58,12 +61,6 @@ export async function sha256(text) {
   return [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// The phone app calls the JSON API from its own origin. Auth is a bearer token (never a cookie),
-// so allowing any origin exposes nothing a script couldn't already do with the token.
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-max-age": "86400" };
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
-const err = (status, code, message) => json({ error: { code, message } }, status);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function page(title, body, status = 200) {
@@ -93,10 +90,6 @@ function config(env) {
 const base = (env, request) => (env.BASE_URL || new URL(request.url).origin).replace(/\/+$/, "");
 
 // ---------------------------------------------------------------- database
-
-const one = (db, sql, ...args) => db.prepare(sql).bind(...args).first();
-const all = async (db, sql, ...args) => (await db.prepare(sql).bind(...args).all()).results || [];
-const run = (db, sql, ...args) => db.prepare(sql).bind(...args).run();
 
 async function authUser(request, db, now) {
   const m = /^Bearer\s+(\S+)$/.exec(request.headers.get("authorization") || "");
@@ -320,6 +313,15 @@ export async function handle(request, env, deps) {
     : null;
 
   if (method === "GET" && path === "/me") return json(await profile(db, who.userId, who.deviceId));
+
+  if (path.startsWith("/sync/")) {
+    const r = await sync.route(method, path, url, request, db, who, deps.now ? deps.now() : Date.now());
+    if (r) return r;
+  }
+  if (path === "/mail" || path.startsWith("/mail/")) {
+    const r = await mail.route(method, path, url, request, db, who, deps.now ? deps.now() : Date.now());
+    if (r) return r;
+  }
 
   if (method === "POST" && path === "/auth/logout") {
     await deleteDevice(db, who.deviceId, kick);

@@ -42,6 +42,17 @@ print(json.dumps(Opener(key, "ph1", "pc1").open(I["box"])))`, { priv: pc.priv, p
     expect(opened.path).toBe('/api/threads');
   });
 
+  it('work queued from the phone opens on the PC later, with no age limit', async () => {
+    const pc = py('k=new_private_key(); print(json.dumps({"priv": private_to_str(k), "pub": public_str(k)}))', {});
+    const phone = await newKeyPair();
+    const key = await sharedKey(phone, pc.pub, pc.pub, phone.pub);
+    const box = await seal(key, 'ph1', 'pc1', { kind: 'task', task: 'x1', prompt: 'add tests', ts: 0 });
+    const opened = py(`k=private_from_str(I["priv"])
+key=shared_key(k, I["phone"], I["pub"], I["phone"])
+print(json.dumps(open_sealed(key, "ph1", "pc1", I["box"])))`, { priv: pc.priv, pub: pc.pub, phone: phone.pub, box });
+    expect(opened.prompt).toBe('add tests');
+  });
+
   it('a swapped key changes the pairing code', async () => {
     const pc = await newKeyPair(), phone = await newKeyPair(), attacker = await newKeyPair();
     expect(await pairingCode(pc.pub, phone.pub)).not.toBe(await pairingCode(attacker.pub, phone.pub));

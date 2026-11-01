@@ -2,7 +2,7 @@ import React from 'react';
 import { I } from './Icon';
 import { loadSettings } from '../lib/settings';
 
-export type Nav = 'thread' | 'files' | 'images' | 'mcp' | 'automations' | 'skills' | 'settings';
+export type Nav = 'thread' | 'files' | 'images' | 'mcp' | 'automations' | 'skills' | 'mail' | 'settings';
 export type ThreadSummary = { id: string; title: string; updated: number; messages: number; preview: string; workspace?: string };
 
 export function relTime(ts: number): string {
@@ -39,6 +39,7 @@ export default function Sidebar({ nav, go, threads, activeThread, onThread, onNe
         <button className={nav === 'automations' ? 'on' : ''} onClick={() => go('automations')}>{I.clock()} Automations</button>
 
         <button className={nav === 'files' ? 'on' : ''} onClick={() => go('files')}>{I.file()} Files</button>
+        <button className={nav === 'mail' ? 'on' : ''} onClick={() => go('mail')}>{I.mail()} Mail</button>
         <div className="sec"><span>Sessions</span></div>
         {threads.map((t) => (
           <div key={t.id} className={`trow ${activeThread === t.id ? 'on' : ''}`}>

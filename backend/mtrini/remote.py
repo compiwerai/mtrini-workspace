@@ -5,8 +5,10 @@ on this PC. A phone must be paired once: it sends its public key, both screens s
 and you approve it here. After that, every phone message is end-to-end encrypted (remote_crypto) and goes
 through `policy()` before it reaches the local API, so a phone can only do what the allow-list permits, only
 in projects you shared, and never switches the agent to Auto mode unless you allowed that for the phone.
+A phone you give Full access can do everything the app can, in any project, except change remote access itself.
 
-State lives in ~/.mtrini/remote.json: {enabled, pc_key, projects, paired: {phoneId: {name, pub, paired_at, allow_auto}}}.
+State lives in ~/.mtrini/remote.json:
+{enabled, pc_key, projects, paired: {phoneId: {name, pub, paired_at, allow_auto, full}}, tasks_done: [taskId, ...]}.
 """
 from __future__ import annotations
 
@@ -87,8 +89,8 @@ def status() -> dict[str, Any]:
             "connected": _runtime["connected"],
             "error": _runtime["error"],
             "phonesOnline": _runtime["phones_online"],
-            "paired": [{"id": k, "name": v.get("name", ""), "pairedAt": v.get("paired_at", 0), "allowAuto": bool(v.get("allow_auto"))}
-                       for k, v in data["paired"].items()],
+            "paired": [{"id": k, "name": v.get("name", ""), "pairedAt": v.get("paired_at", 0), "allowAuto": bool(v.get("allow_auto")),
+                        "full": bool(v.get("full"))} for k, v in data["paired"].items()],
             "pending": pending,
             "projects": data["projects"],
         }
@@ -110,15 +112,28 @@ def share_project(path: str, share: bool) -> dict[str, Any]:
     return status()
 
 
-def shared() -> dict[str, Any]:
-    """What a phone may open: the projects you shared (path and folder name)."""
-    return {"projects": [{"path": p, "name": Path(p).name or p} for p in load()["projects"]]}
+def shared(phone: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What a phone may open: the projects you shared, or with Full access every project this PC has used."""
+    from . import threads
+
+    paths = list(load()["projects"])
+    if phone and phone.get("full"):
+        paths += [p for p in threads.known_workspaces() if p not in paths]
+    return {"projects": [{"path": p, "name": Path(p).name or p} for p in paths]}
 
 
 def set_allow_auto(phone_id: str, allow: bool) -> dict[str, Any]:
     data = load()
     if phone_id in data["paired"]:
         data["paired"][phone_id]["allow_auto"] = bool(allow)
+        _save(data)
+    return status()
+
+
+def set_full(phone_id: str, on: bool) -> dict[str, Any]:
+    data = load()
+    if phone_id in data["paired"]:
+        data["paired"][phone_id]["full"] = bool(on)
         _save(data)
     return status()
 
@@ -143,10 +158,20 @@ _ALLOW = [
 _NO_WORKSPACE = re.compile(r"/api/(health|about|providers|models|images|images/[\w-]+/file|remote/shared)$")
 
 
+# Even with Full access a phone can't change remote access or sign the PC out: only someone at the PC can.
+_PC_ONLY = re.compile(r"/api/(remote|account)(/.*)?$")
+
+
 def policy(method: str, url: str, body: Any, phone: dict[str, Any], projects: list[str]) -> tuple[bool, str, Any]:
     """(allowed, reason, body) for a phone request. May rewrite the body (Auto mode -> Ask)."""
     parts = urlsplit(url)
     path = parts.path.rstrip("/") or "/"
+    if phone.get("full"):
+        if path == "/api/remote/shared":
+            return True, "", body
+        if _PC_ONLY.match(path) or not path.startswith("/api/"):
+            return False, "Only someone at the PC can change this.", body
+        return True, "", body
     if not any(method == m and re.fullmatch(rx, path) for m, rx in _ALLOW):
         return False, "Not allowed from a phone.", body
     if not _NO_WORKSPACE.match(path):
@@ -165,6 +190,38 @@ def policy(method: str, url: str, body: Any, phone: dict[str, Any], projects: li
             if isinstance(body.get("resume"), dict) and body["resume"].get("mode") == "auto":
                 body["resume"] = {**body["resume"], "mode": "ask"}
     return True, "", body
+
+
+# ---------------------------------------------------------------- queued tasks
+
+def open_task(task: dict[str, Any]) -> dict[str, Any]:
+    """Check a task queued in the cloud: sealed by a phone paired with this PC, not run before, and allowed by
+    that phone's access. Returns what to run: {thread_id, workspace, prompt, mode, provider, model}."""
+    data = load()
+    phone = data["paired"].get(task.get("from_device", ""))
+    if not phone:
+        raise PermissionError("Sent from a phone that isn't paired with this PC.")
+    try:
+        box = json.loads(task.get("prompt") or "")
+        key = rc.shared_key(rc.private_from_str(data["pc_key"]), phone["pub"], pc_public(), phone["pub"])
+        body = rc.open_sealed(key, task["from_device"], _device_id(), box)
+    except Exception:
+        raise PermissionError("This task isn't sealed by your phone, so it won't run.") from None
+    if body.get("kind") != "task" or not body.get("task"):
+        raise PermissionError("This task doesn't match what your phone sent.")
+    if body["task"] in data.get("tasks_done", []):  # the id inside the seal, so a resent copy is refused too
+        raise PermissionError("This task already ran.")
+    ws = str(Path(body.get("workspace") or "").resolve())
+    if body.get("thread_id") != task.get("thread_id") or ws != str(Path(task.get("workspace") or "").resolve()):
+        raise PermissionError("This task doesn't match what your phone sent.")
+    mode = body.get("mode") if body.get("mode") in ("ask", "auto", "readonly", "plan") else "ask"
+    ok, reason, checked = policy("POST", "/api/agent", {"workspace": ws, "permissionMode": mode}, phone, data["projects"])
+    if not ok:
+        raise PermissionError(reason)
+    data["tasks_done"] = (data.get("tasks_done", []) + [body["task"]])[-1000:]
+    _save(data)
+    return {"thread_id": body["thread_id"], "workspace": ws, "prompt": str(body.get("prompt") or ""),
+            "mode": checked["permissionMode"], "provider": str(body.get("provider") or ""), "model": str(body.get("model") or "")}
 
 
 # ---------------------------------------------------------------- bridge client
@@ -208,7 +265,8 @@ async def _handle_request(phone_id: str, phone: dict, req: dict) -> None:
     if not ok:
         return await _to_phone(phone_id, {"kind": "res", "rid": rid, "status": 403, "body": json.dumps({"detail": reason})})
     if urlsplit(url).path.rstrip("/") == "/api/remote/shared":  # answered here: this module owns the sharing list
-        return await _to_phone(phone_id, {"kind": "res", "rid": rid, "status": 200, "type": "application/json", "body": json.dumps(shared())})
+        return await _to_phone(phone_id, {"kind": "res", "rid": rid, "status": 200, "type": "application/json",
+                                          "body": json.dumps(shared(phone))})
     async with _local_client() as c:
         kwargs = {"json": body} if body is not None else {}
         async with c.stream(method, url, **kwargs) as r:
