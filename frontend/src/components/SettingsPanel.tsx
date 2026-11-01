@@ -216,7 +216,6 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
               <option value="light">Light</option>
               <option value="dark">Dark</option>
               <option value="system">Match system</option>
-              <option value="glass">Liquid glass</option>
             </select>
           </Row>
           <Row title="Accent color">

@@ -5,7 +5,7 @@ import { loadSettings } from '../lib/settings';
 
 function isLight() {
   const t = document.documentElement.dataset.theme;
-  return t === 'light' || t === 'glass';
+  return t === 'light';
 }
 
 export default function CodeEditor({ path, onSaved }: { path: string; onSaved: () => void }) {

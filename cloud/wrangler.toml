@@ -13,3 +13,12 @@ migrations_dir = "migrations"
 [vars]
 # The public address of this Worker; sign-in providers redirect back to it.
 BASE_URL = "https://mtrini-cloud.roblox-event-bot-worker.workers.dev"
+
+# The live phone-to-PC bridge: one Durable Object per account (SQLite-backed, as the free plan requires).
+[[durable_objects.bindings]]
+name = "BRIDGE"
+class_name = "Bridge"
+
+[[migrations]]
+tag = "v1-bridge"
+new_sqlite_classes = ["Bridge"]

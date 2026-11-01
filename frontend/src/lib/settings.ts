@@ -1,5 +1,5 @@
 export type UISettings = {
-  theme: 'glass' | 'dark' | 'light' | 'system';
+  theme: 'dark' | 'light' | 'system';
   accent: 'teal' | 'blue' | 'green' | 'violet' | 'amber';
   density: 'comfortable' | 'compact';
   editorFontSize: number;
@@ -47,6 +47,7 @@ export const DEFAULTS: UISettings = {
 export function loadSettings(): UISettings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if ((raw.theme as string) === 'glass') raw.theme = 'light'; // the liquid-glass theme was retired in 0.8.3
     return { ...DEFAULTS, ...raw };
   } catch {
     return { ...DEFAULTS };

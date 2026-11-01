@@ -12,6 +12,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.0",
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@monaco-editor/react": "^4.6.0",
@@ -19,6 +22,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@testing-library/jest-dom": "^6.4.6",
     "@testing-library/react": "^15.0.7",
     "@types/node": "^26.6.4",
