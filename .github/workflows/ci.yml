@@ -30,6 +30,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      # src/remote/crypto.test.ts checks the phone's encryption against the PC's (backend/mtrini/remote_crypto.py)
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install "cryptography>=42"
       - run: npm ci --prefix frontend
       - run: npm run lint --prefix frontend
       - run: npm test --prefix frontend

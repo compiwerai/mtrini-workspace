@@ -39,7 +39,9 @@ def run(coro):
 
 def test_policy_allow_list_and_shared_projects(tmp_path):
     proj = str(tmp_path.resolve())
-    ok = lambda m, u, b=None, phone=None: remote.policy(m, u, b, phone or {}, [proj])
+    def ok(m, u, b=None, phone=None):
+        return remote.policy(m, u, b, phone or {}, [proj])
+
     assert ok("GET", "/api/models")[0]
     assert ok("GET", f"/api/threads?workspace={proj}")[0]
     assert ok("POST", "/api/agent", {"workspace": proj, "message": "hi"})[0]
