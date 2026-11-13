@@ -239,6 +239,10 @@ export default function SwarmView() {
             </select>
             <button className="btn primary" onClick={start} disabled={!ready}>{starting ? 'Starting…' : `Start ${agents.length} agent${agents.length === 1 ? '' : 's'}`}</button>
           </div>
+          {agents.some((a) => providers.find((p) => p.id === a.provider)?.free) && (
+            <p className="hint" role="note">The free model answers one request at a time and has a small daily allowance, so agents on it take turns,
+              and a big swarm can use up the day. For agents that truly run at once, pick Claude Code, Codex, Gemini CLI or a provider with your own key.</p>
+          )}
           {permission === 'auto' && (
             <p className="hint">Agents run commands on this computer without asking, inside their own copy of the repo. Anything they do outside it, like installing packages globally, isn't isolated.</p>
           )}

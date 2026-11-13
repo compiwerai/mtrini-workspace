@@ -180,3 +180,31 @@ def test_rate_limited_agent_waits_and_carries_on_without_committing_junk(repo, m
     assert w.files == ["real.py"]  # the .pyc was left out of the commit
     assert any("Rate limited" in (e.get("text") or "") for e in w.events)
     swarm.remove(sw)
+
+
+def test_free_model_agents_take_turns(repo, monkeypatch):
+    """The free relay allows one request in flight, so agents on it must never overlap."""
+    monkeypatch.setattr(swarm, "STAGGER", 0)
+
+    class Counting:
+        active = 0
+        peak = 0
+
+        async def chat(self, model, messages, tools=None, **kw):
+            Counting.active += 1
+            Counting.peak = max(Counting.peak, Counting.active)
+            await anyio.sleep(0.05)
+            Counting.active -= 1
+            return {"content": "Looked.", "tool_calls": []}
+
+    agents = [{"task": f"Part {i}", "provider": "free", "model": "m"} for i in range(3)]
+    sw = _run_swarm(repo, monkeypatch, Counting(), "split", agents, permission="readonly")
+    assert [w.status for w in sw.workers] == ["done"] * 3 and Counting.peak == 1
+    swarm.remove(sw)
+
+    Counting.peak = 0
+    agents = [{"task": f"Part {i}", "provider": "local", "model": "m"} for i in range(3)]
+    sw = _run_swarm(repo, monkeypatch, Counting(), "split", agents, permission="readonly")
+    assert Counting.peak > 1  # other providers really do run at once
+    swarm.remove(sw)
+    assert swarm._rate_limited("Another request is still running. Try again when it finishes.")

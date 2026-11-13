@@ -251,7 +251,7 @@ CONTINUE = ("Continue the task where you left off (the model provider asked us t
 
 
 def _rate_limited(msg: str) -> bool:
-    return bool(re.search(r"\b429\b|rate.?limit|too many requests", msg, re.I))
+    return bool(re.search(r"\b429\b|rate.?limit|too many requests|request is still running", msg, re.I))
 
 
 def _finish_commit(sw: Swarm, w: Worker) -> None:
@@ -364,7 +364,18 @@ def start(root: Path, goal: str, mode: str, agents: list[dict[str, str]], permis
 STAGGER = 2.0  # seconds between agent starts, so a burst of first requests doesn't trip per-minute limits
 
 
+# Providers that answer one request at a time: their agents take turns instead of failing as "busy".
+# The free built-in model is one (its relay allows a single request in flight per install).
+ONE_AT_A_TIME = {"free"}
+_GATES: dict[tuple[str, int], asyncio.Semaphore] = {}
+
+
 async def _staggered(sw: Swarm, w: Worker) -> None:
+    if w.provider in ONE_AT_A_TIME:
+        gate = _GATES.setdefault((w.provider, id(asyncio.get_running_loop())), asyncio.Semaphore(1))
+        async with gate:  # the agent shows as "Waiting" until its turn
+            await _run_worker(sw, w)
+        return
     if w.n and STAGGER:
         await asyncio.sleep(STAGGER * w.n)
     await _run_worker(sw, w)
