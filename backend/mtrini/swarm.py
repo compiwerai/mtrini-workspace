@@ -244,8 +244,10 @@ def _event(w: Worker, ev: dict[str, Any]) -> None:
 # Never commit build junk, even in a repo with no .gitignore for it.
 JUNK = [":(exclude).mtrini", ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.pyc",
         ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.DS_Store"]
-RETRIES = 3
-RETRY_WAIT = 20  # seconds, then 40, 60
+RETRIES = 4  # rate limits in a row, with no progress, before an agent gives up
+RETRY_WAIT = 20  # seconds, then 40, 60 (capped)
+RETRY_CAP = 60
+MAX_WAIT = 30 * 60  # seconds an agent may spend waiting on rate limits in total
 CONTINUE = ("Continue the task where you left off (the model provider asked us to slow down for a moment). "
             "Check what is already done before repeating anything.")
 
@@ -281,8 +283,10 @@ async def _run_worker(sw: Swarm, w: Worker) -> None:
         # A saved session (in the worktree) lets the agent carry on after a rate-limit pause.
         session = f"swarm-{sw.id}-{w.n + 1}"
         message = _prompt(sw, w)
-        for attempt in range(RETRIES + 1):
+        stalls, waited = 0, 0.0  # rate limits in a row with no step in between; seconds spent waiting
+        while True:
             outcome, error = "done", ""
+            steps_before = w.steps
             async for ev in run_agent(Path(w.path), w.provider, w.model, message, [], sw.permission, settings,
                                       thread_id=session):
                 _event(w, ev)
@@ -295,9 +299,15 @@ async def _run_worker(sw: Swarm, w: Worker) -> None:
                         outcome, error = "blocked", f"Stopped: {tool} needs your approval, which a swarm agent can't ask for."
                     elif ev.get("content"):
                         w.summary = str(ev["content"])[-2000:]
-            if outcome != "failed" or not _rate_limited(error) or attempt == RETRIES:
+            if outcome != "failed" or not _rate_limited(error):
                 break
-            wait = RETRY_WAIT * (attempt + 1)
+            # A small API plan allows few requests a minute. Keep going while the agent makes progress between
+            # rate limits; give up after RETRIES in a row with none, or MAX_WAIT of waiting in total.
+            stalls = 1 if w.steps > steps_before else stalls + 1
+            if stalls > RETRIES or waited >= MAX_WAIT:
+                break
+            wait = min(RETRY_WAIT * stalls, RETRY_CAP)
+            waited += wait
             _event(w, {"type": "status", "message": f"Rate limited by the provider; trying again in {wait}s"})
             _save(sw)
             await asyncio.sleep(wait)

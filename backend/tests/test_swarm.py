@@ -208,3 +208,35 @@ def test_free_model_agents_take_turns(repo, monkeypatch):
     assert Counting.peak > 1  # other providers really do run at once
     swarm.remove(sw)
     assert swarm._rate_limited("Another request is still running. Try again when it finishes.")
+
+
+def test_agent_keeps_going_through_many_rate_limits_while_it_makes_progress(repo, monkeypatch):
+    """A small API plan rate-limits every other call. Progress between limits resets the give-up counter."""
+    monkeypatch.setattr(swarm, "RETRY_WAIT", 0)
+    monkeypatch.setattr(swarm, "STAGGER", 0)
+
+    class Stingy:
+        calls = 0
+
+        async def chat(self, model, messages, tools=None, **kw):
+            Stingy.calls += 1
+            if Stingy.calls % 2 == 0:
+                raise RuntimeError("Client error '429 Too Many Requests'")
+            n = (Stingy.calls + 1) // 2
+            if n <= 6:  # six separate steps, each followed by a rate limit: more limits than RETRIES allows in a row
+                return {"content": "", "tool_calls": [{"id": f"c{n}", "name": "write_file", "arguments": json.dumps(
+                    {"path": f"f{n}.txt", "content": "x\n"})}]}
+            return {"content": "Done.", "tool_calls": []}
+
+    sw = _run_swarm(repo, monkeypatch, Stingy(), "best", [{"task": "Do it", "provider": "local", "model": "m"}])
+    assert sw.workers[0].status == "done", sw.workers[0].error
+    assert len(sw.workers[0].files) == 6
+    swarm.remove(sw)
+
+    class Dead:
+        async def chat(self, model, messages, tools=None, **kw):
+            raise RuntimeError("429 Too Many Requests")
+
+    sw = _run_swarm(repo, monkeypatch, Dead(), "best", [{"task": "Do it", "provider": "local", "model": "m"}])
+    assert sw.workers[0].status == "failed" and "429" in sw.workers[0].error  # no progress: gives up
+    swarm.remove(sw)
