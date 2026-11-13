@@ -294,6 +294,7 @@ html[data-theme="light"] .cmdsheet, html[data-theme="dark"] .cmdsheet { border-r
 html[data-theme="light"] .cmdsheet, html[data-theme="dark"] .cmdsheet { box-shadow: 0 24px 70px rgba(16,24,40,.22); }
 label.f { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 16px; }
 html[data-theme="light"] .modal { background: rgba(17, 24, 39, .28); }
+html[data-theme="light"] .modal-back > .modal { background: var(--bg2); }
 
 /* Side panel + tabs */
 html[data-theme="light"] .diffpanel, html[data-theme="dark"] .diffpanel { background: var(--bg); }
@@ -521,7 +522,8 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .importlist .hint { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; z-index: 60; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; width: min(440px, calc(100vw - 32px)); }
+/* The pairing dialog is a small box centred by .modal-back; undo the full-screen overlay styles of .modal for it. */
+.modal-back > .modal { position: static; inset: auto; display: block; z-index: auto; background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; width: min(440px, calc(100vw - 32px)); }
 
 /* Remote access */
 .remote { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
