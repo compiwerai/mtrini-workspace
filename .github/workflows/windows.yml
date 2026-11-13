@@ -28,6 +28,12 @@ jobs:
       - name: Build the app (and smoke-test it)
         shell: pwsh
         run: ./scripts/build-exe.ps1
+      - name: Check the bundle
+        shell: pwsh
+        run: |
+          # A half-collected zstandard (its folder without its Python code) once broke every model request.
+          $bad = Get-ChildItem dist\MtriniWorkspace -Recurse -Directory -Filter zstandard
+          if ($bad) { throw "zstandard was bundled: $($bad.FullName)" }
       - name: Build the installer
         shell: pwsh
         run: |

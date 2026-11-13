@@ -21,7 +21,7 @@ python3 -m PyInstaller --noconfirm --clean --name "$NAME" \
   --collect-submodules mtrini \
   --exclude-module torch --exclude-module torchvision --exclude-module transformers \
   --exclude-module tensorflow --exclude-module pandas --exclude-module pyarrow \
-  --exclude-module pytest --exclude-module matplotlib --exclude-module webview \
+  --exclude-module pytest --exclude-module matplotlib --exclude-module zstandard --exclude-module webview \
   backend/desktop.py
 
 echo "== 3/5 smoke test =="

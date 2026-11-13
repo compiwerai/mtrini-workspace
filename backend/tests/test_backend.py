@@ -470,3 +470,27 @@ def test_skill_context_injects_invoked_skill(tmp_path):
     assert "Look for bugs first." in ctx
     assert "Use the imperative mood." not in ctx
     assert project_mod.skill_context(tmp_path / "empty", "/review") == ""
+
+
+def test_a_half_packaged_zstandard_is_hidden_from_httpx(monkeypatch):
+    """A packaged build once shipped `zstandard` as an empty folder: importable, but with no ZstdDecompressor.
+    httpx then asked servers for zstd and every model request failed while decoding the reply."""
+    import sys
+    import types
+
+    import mtrini
+
+    monkeypatch.setitem(sys.modules, "zstandard", types.ModuleType("zstandard"))  # importable, but empty
+    assert mtrini._hide_broken_zstandard() is True
+    assert sys.modules["zstandard"] is None
+    try:
+        import zstandard  # noqa: F401
+        raised = False
+    except ImportError:
+        raised = True
+    assert raised  # httpx treats this as "zstd not available" and asks for gzip instead
+
+    good = types.ModuleType("zstandard")
+    good.ZstdDecompressor = object
+    monkeypatch.setitem(sys.modules, "zstandard", good)
+    assert mtrini._hide_broken_zstandard() is False and sys.modules["zstandard"] is good  # a working one is left alone

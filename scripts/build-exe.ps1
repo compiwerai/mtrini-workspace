@@ -28,7 +28,7 @@ Invoke-Tool { pyinstaller --noconfirm --clean --name MtriniWorkspace --noconsole
   --exclude-module transformers --exclude-module tensorflow --exclude-module datasets `
   --exclude-module bitsandbytes --exclude-module triton --exclude-module pandas `
   --exclude-module pyarrow --exclude-module lxml --exclude-module pytest `
-  --exclude-module matplotlib `
+  --exclude-module matplotlib --exclude-module zstandard `
   backend\desktop.py }
 
 Write-Host "== 4/4 smoke test =="
