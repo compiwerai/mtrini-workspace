@@ -2,7 +2,7 @@ import React from 'react';
 import { I } from './Icon';
 import { loadSettings } from '../lib/settings';
 
-export type Nav = 'thread' | 'files' | 'images' | 'mcp' | 'automations' | 'skills' | 'mail' | 'settings';
+export type Nav = 'thread' | 'swarm' | 'arena' | 'files' | 'images' | 'mcp' | 'automations' | 'skills' | 'mail' | 'settings';
 export type ThreadSummary = { id: string; title: string; updated: number; messages: number; preview: string; workspace?: string };
 
 export function relTime(ts: number): string {
@@ -34,6 +34,8 @@ export default function Sidebar({ nav, go, threads, activeThread, onThread, onNe
       </div>
       <nav className="nav">
         <button className={nav === 'skills' ? 'on' : ''} onClick={() => go('skills')}>{I.spark()} Skills</button>
+        <button className={nav === 'swarm' ? 'on' : ''} onClick={() => go('swarm')}>{I.swarm()} Swarm</button>
+        <button className={nav === 'arena' ? 'on' : ''} onClick={() => go('arena')}>{I.columns()} Arena</button>
         <button className={nav === 'images' ? 'on' : ''} onClick={() => go('images')}>{I.image()} Images</button>
         <button className={nav === 'mcp' ? 'on' : ''} onClick={() => go('mcp')}>{I.plug()} MCP</button>
         <button className={nav === 'automations' ? 'on' : ''} onClick={() => go('automations')}>{I.clock()} Automations</button>

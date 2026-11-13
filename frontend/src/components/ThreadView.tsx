@@ -37,6 +37,9 @@ export const BUILTIN_COMMANDS: { name: string; description: string }[] = [
   { name: 'init', description: 'Write .mtrini/instructions.md for this project' },
   { name: 'agents', description: 'List this project\'s subagents (.mtrini/agents)' },
   { name: 'permissions', description: 'Show tools and commands that are always allowed' },
+  { name: 'review', description: 'Review your uncommitted changes for bugs (read-only)' },
+  { name: 'memory', description: 'Show what the agent remembers about you and this project' },
+  { name: 'swarm', description: 'Run several agents at once on one goal' },
 ];
 
 export type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' };
@@ -111,7 +114,7 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
-function Body({ text }: { text: string }) {
+export function Body({ text }: { text: string }) {
   const out: React.ReactNode[] = [];
   const lines = text.split('\n');
   let i = 0, k = 0;
@@ -346,7 +349,54 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
     ta.current?.focus();
   };
 
+  // Improve prompt: the chosen chat model rewrites the draft; Undo puts the original back.
+  const [improving, setImproving] = useState(false);
+  const [undoText, setUndoText] = useState<string | null>(null);
+  const isCli = !!chatProviders.find((p) => p.id === prov)?.agentCli;
+  const improve = async () => {
+    const text = input.trim();
+    if (!text || improving || isCli) return;
+    setImproving(true);
+    try {
+      const r = await api.improvePrompt(prov, mid, text);
+      if (r.text && r.text !== text) { setUndoText(input); setInput(r.text); }
+    } catch (e: any) {
+      setUndoText(null);
+      window.dispatchEvent(new CustomEvent('mtrini:toast', { detail: `Could not improve the prompt: ${String(e.message || e).slice(0, 200)}` }));
+    } finally { setImproving(false); }
+  };
+
+  // Voice input: the browser's speech recognition (Chrome, Edge, the desktop app's WebView2).
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  const [listening, setListening] = useState(false);
+  const rec = useRef<any>(null);
+  const toggleVoice = () => {
+    if (!SR) return;
+    if (listening) { rec.current?.stop(); return; }
+    const r = new SR();
+    r.lang = loadSettings().voiceLang || 'en-US';
+    r.interimResults = true;
+    r.continuous = true;
+    const before = input ? input.replace(/\s*$/, ' ') : '';
+    r.onresult = (e: any) => {
+      let said = '';
+      for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
+      setInput(before + said.trim());
+    };
+    r.onend = () => setListening(false);
+    r.onerror = (e: any) => {
+      setListening(false);
+      if (e.error === 'not-allowed') window.dispatchEvent(new CustomEvent('mtrini:toast', { detail: 'Microphone access was blocked.' }));
+    };
+    rec.current = r;
+    setListening(true);
+    r.start();
+  };
+  useEffect(() => () => rec.current?.abort?.(), []);
+
   const submit = () => {
+    rec.current?.stop?.();
+    setUndoText(null);
     const text = input.trim();
     if (!text || busy) return;
     const cmd = /^\/([a-z0-9-]+)$/.exec(text);
@@ -559,6 +609,15 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
                   <option key={e} value={e}>{e === 'off' ? 'Think: off' : `Think: ${e}`}</option>
                 ))}
               </select>
+            )}
+            {undoText !== null && !improving && (
+              <button className="pillselect" onClick={() => { setInput(undoText); setUndoText(null); }} title="Put back what you wrote">Undo</button>
+            )}
+            <button className={`iconbtn${improving ? ' on' : ''}`} onClick={improve} disabled={!input.trim() || improving || isCli}
+              aria-label="Improve prompt" title={isCli ? 'Pick a chat model to improve prompts' : 'Improve prompt: the selected model makes your request clearer'}>{I.wand()}</button>
+            {SR && (
+              <button className={`iconbtn${listening ? ' rec' : ''}`} onClick={toggleVoice} aria-pressed={listening}
+                aria-label={listening ? 'Stop voice input' : 'Voice input'} title={`Voice input (${loadSettings().voiceLang}). Change the language in Settings → Chat`}>{I.mic()}</button>
             )}
             {busy ? (
               <button className="sendbtn stop" onClick={onStop} aria-label="Stop">{I.stop()}</button>

@@ -3,11 +3,13 @@ import { api } from '../api/client';
 import { I } from './Icon';
 
 export type ActionId =
-  | 'new-thread' | 'go-files' | 'go-images' | 'go-mcp' | 'go-skills' | 'go-automations' | 'go-settings'
+  | 'new-thread' | 'go-swarm' | 'go-arena' | 'go-files' | 'go-images' | 'go-mcp' | 'go-skills' | 'go-automations' | 'go-settings'
   | 'toggle-diff' | 'open-folder' | 'commit' | 'pick-workspace';
 
 const ACTIONS: { id: ActionId; label: string; hint: string }[] = [
   { id: 'new-thread', label: 'New thread', hint: 'Ctrl+L' },
+  { id: 'go-swarm', label: 'Go to Swarm (agents in parallel)', hint: '' },
+  { id: 'go-arena', label: 'Go to Arena (compare models)', hint: '' },
   { id: 'go-files', label: 'Go to Files', hint: '' },
   { id: 'go-images', label: 'Go to Images', hint: '' },
   { id: 'go-mcp', label: 'Go to MCP dev tools', hint: '' },

@@ -18,6 +18,8 @@ export type UISettings = {
   confirmDelete: boolean;
   useSkills: boolean;
   useInstructions: boolean;
+  notifyDone: boolean;
+  voiceLang: string;
 };
 
 const KEY = 'mtrini.ui';
@@ -42,6 +44,8 @@ export const DEFAULTS: UISettings = {
   confirmDelete: true,
   useSkills: true,
   useInstructions: true,
+  notifyDone: true,
+  voiceLang: 'en-US',
 };
 
 export function loadSettings(): UISettings {

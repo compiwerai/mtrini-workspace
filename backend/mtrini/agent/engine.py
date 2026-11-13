@@ -136,6 +136,18 @@ async def run_agent(root: Path, provider_name: str, model: str, user_text: str,
                     thread_id: str | None = None, resume: dict | None = None,
                     images: list[dict] | None = None, system_extra: str = "", context: str = "",
                     depth: int = 0) -> AsyncIterator[dict[str, Any]]:
+    from ..providers import agent_cli
+
+    if provider_name in agent_cli.CLIS:  # the user's own Claude Code / Codex / Gemini CLI runs the turn
+        if depth or resume:
+            yield {"type": "error", "message": "This CLI runs its own agent: subagents and approval cards don't apply."}
+            return
+        from .external import run_external
+
+        async for ev in run_external(root, provider_name, model, user_text, permission_mode, thread_id=thread_id,
+                                     system_extra=system_extra, context=context, images=images):
+            yield ev
+        return
     effort = normalize_effort(effort)
     if max_steps is None:
         max_steps = EFFORT_TO_STEPS[effort]
@@ -173,6 +185,11 @@ async def run_agent(root: Path, provider_name: str, model: str, user_text: str,
     first_turn = not s.messages
     if first_turn:
         sys_text = SYSTEM_PROMPT + (f"\n\n{system_extra}" if system_extra else "")
+        from .. import memory
+
+        mem = memory.for_prompt(root)
+        if mem:
+            sys_text += "\n\nMemory from earlier sessions (may be out of date; check before relying on it):\n" + mem
         legacy = [h for h in history if h.get("role") == "system"]
         if legacy and not system_extra:  # older clients send instructions as a system message
             sys_text += "\n\n" + "\n\n".join(str(h.get("content", "")) for h in legacy)

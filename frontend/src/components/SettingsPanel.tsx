@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import AccountPanel from './AccountPanel';
 import { UpdateSettings } from './Updates';
 import { I } from './Icon';
+import { enableNotifications } from '../lib/notify';
 import { loadSettings, saveSettings, UISettings } from '../lib/settings';
 
 const DEFAULT_URL: Record<string, string> = {
@@ -147,6 +148,38 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
+function MemoryEditor({ onToast }: { onToast: (s: string) => void }) {
+  const [scope, setScope] = useState<'project' | 'user'>('project');
+  const [mem, setMem] = useState<Record<string, { text: string; path: string }> | null>(null);
+  const [text, setText] = useState('');
+  useEffect(() => { api.memory().then((m) => { setMem(m); setText(m.project.text); }).catch(() => setMem(null)); }, []);
+  const pick = (s: 'project' | 'user') => { setScope(s); setText(mem?.[s]?.text || ''); };
+  const save = async () => {
+    try {
+      await api.saveMemory(scope, text);
+      setMem((m) => (m ? { ...m, [scope]: { ...m[scope], text } } : m));
+      onToast('Memory saved');
+    } catch (e: any) { onToast(`Could not save: ${String(e.message || e).replace(/^\d{3} /, '').slice(0, 200)}`); }
+  };
+  if (!mem) return null;
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="label-caps">Memory</div>
+      <p className="hint">Facts the agent keeps between sessions with its remember tool, and reads at the start of each one. Type /memory in a session to see them.</p>
+      <div className="row" style={{ gap: 6 }}>
+        <button className={`btn ${scope === 'project' ? 'primary' : ''}`} onClick={() => pick('project')}>This project</button>
+        <button className={`btn ${scope === 'user' ? 'primary' : ''}`} onClick={() => pick('user')}>You (every project)</button>
+      </div>
+      <textarea className="t mono" rows={8} aria-label={`${scope === 'project' ? 'Project' : 'Your'} memory`} value={text}
+        onChange={(e) => setText(e.target.value)} placeholder="- Run tests with npm test -- --run" style={{ marginTop: 8 }} />
+      <div className="row" style={{ marginTop: 6 }}>
+        <button className="btn primary" onClick={save} disabled={text === (mem[scope]?.text || '')}>Save memory</button>
+        <span className="hint mono" style={{ margin: 0 }}>{mem[scope]?.path}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPanel({ onToast }: { onToast: (s: string) => void }) {
   const [tab, setTab] = useState<Tab>('appearance');
   const [ui, setUi] = useState<UISettings>(loadSettings());
@@ -166,8 +199,9 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
   }, []);
   // Which fields a provider needs comes from the backend's list, so new providers get a key field automatically.
   const meta = allProv.find((p) => p.id === prov);
-  const needKey = meta ? !!(meta.needsKey || meta.custom) : NEEDS_KEY.includes(prov);
-  const needUrl = meta ? !!(meta.custom || (meta.fields || []).includes('baseUrl')) : NEEDS_URL.includes(prov);
+  const isCli = !!meta?.agentCli; // your own Claude Code / Codex / Gemini CLI: nothing to type here
+  const needKey = !isCli && (meta ? !!(meta.needsKey || meta.custom) : NEEDS_KEY.includes(prov));
+  const needUrl = !isCli && (meta ? !!(meta.custom || (meta.fields || []).includes('baseUrl')) : NEEDS_URL.includes(prov));
 
   const set = (patch: Partial<UISettings>) => setUi(saveSettings(patch));
 
@@ -263,6 +297,22 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
 
       {tab === 'chat' && (
         <>
+          <Row title="Notify me when a turn finishes" hint="A sound and a desktop notification, only while you're in another window.">
+            <Switch label="Notify me when a turn finishes" checked={ui.notifyDone}
+              onChange={async (on) => {
+                set({ notifyDone: on });
+                if (on && !(await enableNotifications())) onToast('Sound only: notifications are blocked for this app.');
+              }} />
+          </Row>
+          <Row title="Voice input language" hint="For the microphone button in the composer.">
+            <select className="t" aria-label="Voice input language" value={ui.voiceLang} onChange={(e) => set({ voiceLang: e.target.value })}>
+              <option value="en-US">English</option>
+              <option value="fr-FR">Français</option>
+              <option value="ar-MA">الدارجة المغربية (ar-MA)</option>
+              <option value="ar-SA">العربية</option>
+              <option value="es-ES">Español</option>
+            </select>
+          </Row>
           <Row title="Send messages with" hint="The other combination inserts a new line.">
             <select className="t" aria-label="Send messages with" value={ui.sendKey} onChange={(e) => set({ sendKey: e.target.value as UISettings['sendKey'] })}>
               <option value="enter">Enter (Shift+Enter for new line)</option>
@@ -307,6 +357,7 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
             <input type="range" min={10} max={18} value={ui.terminalFontSize} aria-label="Terminal font size"
               onChange={(e) => set({ terminalFontSize: Number(e.target.value) })} />
           </Row>
+          <MemoryEditor onToast={onToast} />
           <AgentExtras onToast={onToast} />
           <div style={{ marginTop: 16 }}>
             <div className="label-caps">Runtime status</div>
@@ -346,10 +397,14 @@ export default function SettingsPanel({ onToast }: { onToast: (s: string) => voi
           )}
           {prov === 'ollama' && <p className="hint">Install from ollama.com, then <code>ollama pull qwen2.5-coder</code>.</p>}
           {prov === 'lmstudio' && <p className="hint">LM Studio → Developer tab → Start Server (port 1234).</p>}
-          <div style={{ marginTop: 12 }} className="row">
+          {isCli && (
+            <p className="hint">{meta.installed ? <>{I.check()} Installed. Pick it in the composer's model menu.</>
+              : 'After installing, reopen Settings.'} Mtrini runs the program in your project folder and never handles your login.</p>
+          )}
+          {!isCli && <div style={{ marginTop: 12 }} className="row">
             <button className="btn primary" onClick={saveProvider}>Save provider</button>
             <button className="btn" onClick={() => api.disconnect(prov).then(() => { loadProviders(); window.dispatchEvent(new Event('mtrini:providers-changed')); onToast('Disconnected'); }).catch((e: any) => onToast(`Disconnect failed: ${e.message || e}`))}>Disconnect</button>
-          </div>
+          </div>}
           <CustomProviders providers={allProv} onToast={onToast}
             onChanged={() => { loadProviders(); window.dispatchEvent(new Event('mtrini:providers-changed')); }} />
         </>

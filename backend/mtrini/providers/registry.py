@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from . import agent_cli as _agent_cli
 from . import cloud as _cloud
 from . import free as _free
 from . import gemini_anthropic as _ga
@@ -76,6 +77,8 @@ def build_provider(name: str, root: Path, settings: dict[str, Any] | None = None
         return _free.HeabsyProvider(api_key=get_secret(root, "mtrini-heabsy", "apiKey") or "")
     if name == "free":
         return _free.FreeProvider()
+    if name in _agent_cli.CLIS:  # your own Claude Code / Codex / Gemini CLI login
+        return _agent_cli.AgentCLIProvider(name)
     if name.startswith("custom-"):  # one of your own OpenAI-compatible providers
         if not s.get("baseUrl"):
             raise ValueError(f"Custom provider {name} has no base URL. Edit it in Settings → Providers.")
@@ -143,4 +146,4 @@ def provider_meta() -> list[dict[str, Any]]:
     custom = [{"id": c["id"], "label": c["label"], "needsKey": False, "custom": True, "baseUrl": c["baseUrl"],
                "fields": ["baseUrl", "model"], "hint": "Your own OpenAI-compatible provider; the key is optional"}
               for c in custom_providers()]
-    return ([FREE_META] if _free.free_relay_url() else []) + PROVIDER_META + custom
+    return ([FREE_META] if _free.free_relay_url() else []) + _agent_cli.meta() + PROVIDER_META + custom

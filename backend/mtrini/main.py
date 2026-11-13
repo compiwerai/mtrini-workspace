@@ -111,6 +111,8 @@ def providers(workspace: str | None = None):
         pid = m["id"]
         if m.get("free"):
             connected = True
+        elif m.get("agentCli"):  # your own Claude Code / Codex / Gemini CLI: ready once it's installed
+            connected = bool(m.get("installed"))
         elif pid == "huggingface":
             connected = bool(get_secret(r, "mtrini-hf", "token"))
         elif m.get("needsKey"):
@@ -744,6 +746,211 @@ def git_commit(body: CommitBody):
     if p.returncode != 0:
         raise HTTPException(422, (p.stdout + p.stderr)[-800:])
     return {"ok": True, "output": p.stdout[-2000:]}
+
+
+class ModelBody(BaseModel):
+    provider: str = "local"
+    model: str = ""
+    text: str = ""
+    workspace: str | None = None
+
+
+def _model_provider(r: Path, provider: str):
+    from .providers import agent_cli
+
+    if provider in agent_cli.CLIS:
+        raise HTTPException(400, "Pick a chat model for this (your CLI agents can't answer one-off requests).")
+    try:
+        return build_provider(provider, r, provider_settings(r, provider))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/git/commit-message")
+async def git_commit_message(body: ModelBody):
+    """Write a commit message for the staged changes (or the unstaged ones if nothing is staged)."""
+    from . import extras
+
+    r = root(body.workspace)
+    p = _model_provider(r, body.provider)
+    try:
+        return await extras.commit_message(r, p, body.model)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, agent_engine.friendly_error(e))
+
+
+@app.post("/api/prompt/improve")
+async def prompt_improve(body: ModelBody):
+    from . import extras
+
+    if not body.text.strip():
+        raise HTTPException(400, "Nothing to improve")
+    r = root(body.workspace)
+    p = _model_provider(r, body.provider)
+    try:
+        return {"text": await extras.improve_prompt(p, body.model, body.text)}
+    except Exception as e:
+        raise HTTPException(502, agent_engine.friendly_error(e))
+
+
+@app.get("/api/threads/{tid}/export")
+def thread_export(tid: str, format: str = "html", workspace: str | None = None):
+    """A thread as a shareable HTML page, Markdown or JSON (tool outputs left out)."""
+    from . import extras
+
+    if format not in ("html", "md", "json"):
+        raise HTTPException(400, "format must be html, md or json")
+    try:
+        name, content, media = extras.export_thread(root(workspace), tid, format)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(404, "thread not found")
+    return Response(content, media_type=f"{media}; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+# ---- agent swarm ----
+
+class SwarmPlanBody(BaseModel):
+    goal: str
+    provider: str = "local"
+    model: str = ""
+    count: int = 3
+    workspace: str | None = None
+
+
+class SwarmStartBody(BaseModel):
+    goal: str
+    mode: str = "split"  # split | best
+    permission: str = "auto"  # auto | readonly
+    agents: list[dict[str, str]] = []  # [{task, provider, model}]
+    workspace: str | None = None
+
+
+def _swarm(sid: str):
+    from . import swarm
+
+    try:
+        return swarm.get(sid)
+    except KeyError:
+        raise HTTPException(404, "swarm not found")
+
+
+@app.get("/api/swarm")
+def swarm_list(workspace: str | None = None):
+    from . import swarm
+
+    return {"swarms": swarm.list_for(root(workspace)), "maxAgents": swarm.MAX_AGENTS}
+
+
+@app.post("/api/swarm/plan")
+async def swarm_plan(body: SwarmPlanBody):
+    """Split a goal into independent parts, one per agent (you can edit them before starting)."""
+    from . import swarm
+
+    if not body.goal.strip():
+        raise HTTPException(400, "Write the goal first")
+    r = root(body.workspace)
+    p = _model_provider(r, body.provider)
+    try:
+        return {"tasks": await swarm.plan(r, p, body.model, body.goal, body.count)}
+    except Exception as e:
+        raise HTTPException(502, agent_engine.friendly_error(e))
+
+
+@app.post("/api/swarm")
+async def swarm_start(body: SwarmStartBody):
+    from . import swarm
+
+    try:
+        sw = swarm.start(root(body.workspace), body.goal, body.mode, body.agents, body.permission)
+    except swarm.SwarmError as e:
+        raise HTTPException(400, str(e))
+    return sw.to_dict()
+
+
+@app.get("/api/swarm/{sid}")
+def swarm_get(sid: str):
+    return _swarm(sid).to_dict()
+
+
+@app.get("/api/swarm/{sid}/diff/{n}")
+def swarm_diff(sid: str, n: int):
+    from . import swarm
+
+    sw = _swarm(sid)
+    if not 0 <= n < len(sw.workers):
+        raise HTTPException(404, "no such agent")
+    return {"diff": swarm.diff(sw, n)}
+
+
+@app.post("/api/swarm/{sid}/merge/{n}")
+def swarm_merge(sid: str, n: int):
+    from . import swarm
+
+    sw = _swarm(sid)
+    if not 0 <= n < len(sw.workers):
+        raise HTTPException(404, "no such agent")
+    try:
+        return swarm.merge(sw, n)
+    except swarm.SwarmError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/swarm/{sid}/discard/{n}")
+def swarm_discard(sid: str, n: int):
+    from . import swarm
+
+    sw = _swarm(sid)
+    if not 0 <= n < len(sw.workers):
+        raise HTTPException(404, "no such agent")
+    swarm.discard(sw, n)
+    return sw.to_dict()
+
+
+@app.post("/api/swarm/{sid}/stop")
+def swarm_stop(sid: str):
+    from . import swarm
+
+    swarm.stop(_swarm(sid))
+    return {"ok": True}
+
+
+@app.delete("/api/swarm/{sid}")
+def swarm_delete(sid: str):
+    from . import swarm
+
+    swarm.remove(_swarm(sid))
+    return {"ok": True}
+
+
+# ---- agent memory ----
+
+class MemoryBody(BaseModel):
+    scope: str = "project"
+    text: str = ""
+    workspace: str | None = None
+
+
+@app.get("/api/memory")
+def memory_get(workspace: str | None = None):
+    from . import memory
+
+    r = root(workspace)
+    return {s: {"text": memory.read(r, s), "path": str(memory.path(r, s))} for s in ("project", "user")}
+
+
+@app.post("/api/memory")
+def memory_save(body: MemoryBody):
+    from . import memory
+
+    if body.scope not in ("project", "user"):
+        raise HTTPException(400, "scope must be project or user")
+    if memory.SECRET.search(body.text):
+        raise HTTPException(400, "That looks like a secret (a key, token or password). Remove it first.")
+    memory.write(root(body.workspace), body.scope, body.text)
+    return {"ok": True}
 
 
 @app.post("/api/project/open")

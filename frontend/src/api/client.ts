@@ -88,6 +88,32 @@ export const api = {
   gitDiff: (path = '.') => j<any>(`/api/git/diff?path=${encodeURIComponent(path)}`),
   gitDiffCached: () => j<any>('/api/git/diff?cached=true'),
   gitCommit: (message: string) => j<any>('/api/git/commit', { method: 'POST', body: JSON.stringify({ message }) }),
+  commitMessage: (provider: string, model: string) =>
+    j<{ message: string; source?: string; error?: string }>('/api/git/commit-message', { method: 'POST', body: JSON.stringify({ provider, model }) }),
+  improvePrompt: (provider: string, model: string, text: string) =>
+    j<{ text: string }>('/api/prompt/improve', { method: 'POST', body: JSON.stringify({ provider, model, text }) }),
+  /** A thread as a file: { name, text } (the caller saves it). Tool outputs are left out by the backend. */
+  exportThread: async (id: string, format: 'html' | 'md' | 'json') => {
+    const w = inject(`/api/threads/${encodeURIComponent(id)}/export?format=${format}`, undefined, true);
+    const r = await transport(BASE + w.url, { ...(w.init || {}) });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    const name = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '')?.[1] || `session.${format}`;
+    return { name, text: await r.text() };
+  },
+  swarms: () => j<{ swarms: any[]; maxAgents: number }>('/api/swarm'),
+  swarm: (id: string) => j<any>(`/api/swarm/${encodeURIComponent(id)}`),
+  swarmPlan: (goal: string, provider: string, model: string, count: number) =>
+    j<{ tasks: string[] }>('/api/swarm/plan', { method: 'POST', body: JSON.stringify({ goal, provider, model, count }) }),
+  swarmStart: (b: { goal: string; mode: 'split' | 'best'; permission: 'auto' | 'readonly'; agents: { task: string; provider: string; model: string }[] }) =>
+    j<any>('/api/swarm', { method: 'POST', body: JSON.stringify(b) }),
+  swarmDiff: (id: string, n: number) => j<{ diff: string }>(`/api/swarm/${encodeURIComponent(id)}/diff/${n}`),
+  swarmMerge: (id: string, n: number) => j<any>(`/api/swarm/${encodeURIComponent(id)}/merge/${n}`, { method: 'POST', body: '{}' }),
+  swarmDiscard: (id: string, n: number) => j<any>(`/api/swarm/${encodeURIComponent(id)}/discard/${n}`, { method: 'POST', body: '{}' }),
+  swarmStop: (id: string) => j<any>(`/api/swarm/${encodeURIComponent(id)}/stop`, { method: 'POST', body: '{}' }),
+  swarmDelete: (id: string) => j<any>(`/api/swarm/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  memory: () => j<Record<'project' | 'user', { text: string; path: string }>>('/api/memory'),
+  saveMemory: (scope: 'project' | 'user', text: string) =>
+    j<any>('/api/memory', { method: 'POST', body: JSON.stringify({ scope, text }) }),
   gitStage: (paths: string[]) => j<any>('/api/git/stage', { method: 'POST', body: JSON.stringify({ paths }) }),
   hfSearch: (q: string) => j<any>(`/api/hf/search?q=${encodeURIComponent(q)}`),
   hfDetails: (repo: string) => j<any>(`/api/hf/details?repo=${encodeURIComponent(repo)}`),

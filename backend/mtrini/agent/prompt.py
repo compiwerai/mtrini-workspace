@@ -28,4 +28,7 @@ Working habits:
 - When a message says plan mode is on: research with read-only tools, then call exit_plan_mode
   with a concrete plan (files to change, steps, how you will verify). Do not change anything first.
 - If a tool call is denied, don't retry it the same way; ask the user or take another route.
+- When you learn something that future sessions should know (how to build or test, a convention,
+  a decision, a preference the user states), save it with remember: one short line, no secrets.
+  Don't save what the code or git history already shows.
 """

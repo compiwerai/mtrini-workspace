@@ -70,6 +70,31 @@ export default function CodeEditor({ path, onSaved }: { path: string; onSaved: (
             edRef.current = ed;
             monRef.current = mon;
             ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.KeyS, () => save());
+            // Right-click on a selection: hand it to the agent with the file and line numbers.
+            const ask = (verb: string) => () => {
+              const sel = ed.getSelection();
+              const model = ed.getModel();
+              if (!sel || !model) return;
+              const code = sel.isEmpty() ? model.getLineContent(sel.startLineNumber) : model.getValueInRange(sel);
+              const where = `${path}:${sel.startLineNumber}${sel.endLineNumber !== sel.startLineNumber ? `-${sel.endLineNumber}` : ''}`;
+              const fence = code.includes('```') ? '````' : '```';
+              window.dispatchEvent(new CustomEvent('mtrini:ask', { detail: `${verb} (${where}):
+
+${fence}${lang}
+${code}
+${fence}
+` }));
+            };
+            [
+              ['mtrini.explain', 'Mtrini: Explain this code', 'Explain what this code does and anything surprising in it'],
+              ['mtrini.fix', 'Mtrini: Find and fix bugs here', 'Find bugs in this code and fix them'],
+              ['mtrini.tests', 'Mtrini: Write tests for this', "Write tests for this code, following the project's existing test setup"],
+              ['mtrini.refactor', 'Mtrini: Refactor this', 'Refactor this code for clarity without changing behaviour'],
+              ['mtrini.ask', 'Mtrini: Ask about this…', 'About this code'],
+            ].forEach(([id, label, verb], i) => ed.addAction({
+              id, label, contextMenuGroupId: '0_mtrini', contextMenuOrder: i + 1, run: ask(verb),
+              ...(id === 'mtrini.ask' ? { keybindings: [mon.KeyMod.CtrlCmd | mon.KeyMod.Shift | mon.KeyCode.KeyL] } : {}),
+            }));
             applyPrefs();
           }}
         />

@@ -4,28 +4,67 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/compiwerai/mtrini-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/compiwerai/mtrini-workspace/actions)
 
-**Your AI. Your code. Your workspace.**
+**An open-source AI coding agent that works the moment you open it.**
+No API key, no account, no card: a free built-in model is already connected.
 
-Open-source AI development environment by **Compiwer AI** — *Building AI For Everyone.*
+Mtrini Workspace reads your project, plans, edits files, runs your tests and fixes what broke,
+like Claude Code or Cursor's agent. It's a desktop app for Windows and Linux, Apache-2.0, by
+**Compiwer AI**.
 
-> Build software with local models, Hugging Face models, and configurable cloud/API models — through one model-agnostic agent.
+## Get it
 
-- A free built-in model, no key needed: Qwen3.8 27B, sponsored by [Heabsy](https://heabsy.com)
-  (daily limit; see `relay/` and PRIVACY.md)
-- Local AI (llama.cpp / Ollama / vLLM / any OpenAI-compatible server)
-- Hugging Face browser, auth, downloads
-- API providers: OpenAI, Anthropic, Gemini, OpenRouter, Mistral, DeepSeek, Groq,
-  Together, Fireworks, xAI (Grok), Cohere, Cerebras, DeepInfra, Nebius, SambaNova,
-  Novita, SiliconFlow, Azure OpenAI, custom (24 total)
-- Local runtimes: llama.cpp, Ollama, LM Studio, vLLM, any OpenAI-compatible server
-- MCP dev tools: connect any MCP server (stdio / streamable HTTP), lend tools to
-  the agent, inspect schemas and run calls manually
-- Mtrini Images: generate pictures with image models from any image-capable
-  provider (OpenAI, Together, Fireworks, xAI, Gemini, Hugging Face, SD WebUI…)
-- Real tool-using coding agent (inspect → plan → change → test → verify) with plan mode,
-  task lists, diffs, rewind, subagents, hooks, web search and a headless CLI
+| System | Download |
+|---|---|
+| Windows 10/11 | [MtriniWorkspace-Setup.exe](https://github.com/compiwerai/mtrini-workspace/releases/latest) |
+| Linux (any distro) | [.AppImage](https://github.com/compiwerai/mtrini-workspace/releases/latest) |
+| Debian, Ubuntu | [.deb](https://github.com/compiwerai/mtrini-workspace/releases/latest) |
+| macOS | not built yet: [run from source](#installation) |
+
+Open it, pick a folder, type what you want. That's the whole setup.
+
+## Pick any brain
+
+- **Free, built in:** Qwen3.8 27B, sponsored by [Heabsy](https://heabsy.com). Daily limit;
+  see `relay/` and PRIVACY.md.
+- **The subscription you already pay for:** if you use **Claude Code**, **Codex CLI** or
+  **Gemini CLI**, pick it in the model menu. Mtrini runs that official program on your
+  computer, signed in with your own account, and shows its work in the thread. Mtrini never
+  sees or stores your login, and usage follows that service's own terms.
+- **Local and private:** llama.cpp, Ollama, LM Studio, vLLM or any OpenAI-compatible server.
+- **Your own keys, 20+ providers:** OpenAI, Anthropic, Gemini, OpenRouter, Mistral,
+  DeepSeek, Groq, Together, Fireworks, xAI, Cohere, Cerebras, DeepInfra, Nebius,
+  SambaNova, Novita, SiliconFlow, Azure OpenAI, Hugging Face, or your own endpoint.
+
+## What it does
+
+- A real tool-using agent: inspect → plan → change → test → verify, with plan mode, task
+  lists, diffs, rewind, subagents, hooks, web search and a headless CLI
 - Monaco editor, terminal, Git, skills, specialized agents, model routing
-- Local-first, no telemetry, Apache-2.0
+- MCP dev tools: connect any MCP server (stdio or streamable HTTP), lend its tools to the
+  agent, inspect schemas and run calls by hand
+- Hugging Face browser: search, sign in, download and run models locally
+- Mtrini Images: make pictures with any image-capable provider
+- **Swarm:** run 2–4 agents at once. Split one goal into parts, or give every agent the same
+  task (best of N). Each agent works in its own git worktree on its own branch, so your folder
+  stays untouched until you merge the results you want. Mix models freely, including your own
+  Claude Code, Codex or Gemini CLI. A rate-limited agent waits and carries on by itself
+- **Memory:** the agent saves lasting facts (how to test, conventions, your preferences) with a
+  `remember` tool and reads them in every new session. `/memory` shows them; edit them in
+  Settings → Agent. Anything that looks like a secret is refused
+- **`/review`:** a read-only review of your uncommitted changes for bugs, most serious first
+- **Arena:** send one prompt to two or three models side by side, with timings, a blind mode
+  and your own leaderboard
+- **Improve prompt:** the selected model turns a rough request into a clear one (Undo puts
+  yours back)
+- **Voice input** in English, French, Arabic or Moroccan Darija
+- **Export a session** as one shareable web page or as Markdown. Tool outputs are left out,
+  so file contents and secrets stay on your computer
+- **Write commit messages with AI** from your staged changes
+- **Editor actions:** right-click code to explain it, fix bugs, write tests or refactor
+  (Ctrl+Shift+L asks about the selection)
+- **Notifications:** a chime and a desktop notification when a turn finishes or needs your
+  approval while you're in another window
+- Local-first and no telemetry
 
 ## Architecture
 
@@ -45,12 +84,12 @@ No Python/Node needed at runtime:
 
 ```powershell
 .\scripts\build-exe.ps1        # builds frontend, exe -> dist\MtriniWorkspace\
-iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.8.2.exe
+iscc scripts\setup.iss         # needs Inno Setup 6 -> installer\MtriniWorkspace-Setup-0.9.0.exe
 ```
 
 Run `MtriniWorkspace.exe` (or install the Setup): it serves the API **and**
 the UI from one process and opens `http://127.0.0.1:8787` in your browser.
-Silent install: `MtriniWorkspace-Setup-0.8.2.exe /SILENT`.
+Silent install: `MtriniWorkspace-Setup-0.9.0.exe /SILENT`.
 
 Updates: from 0.8.2 on, the app downloads new releases in the background (checksum-verified)
 and installs them when you close it, or right away with **Restart to update**. The AppImage
@@ -169,6 +208,27 @@ work, with a live timeline of every step. Each session keeps its full tool histo
 - **Images:** paste or drop screenshots into the composer (vision models).
 - **Providers:** tool calling works with OpenAI-compatible servers, Anthropic (official SDK,
   adaptive thinking with effort levels on current Claude models) and Gemini (function calling).
+
+### Your own Claude Code, Codex or Gemini CLI
+
+If one of these is installed and you've signed in to it once in a terminal, it appears in the
+composer's model menu: **Claude Code (your subscription)**, **Codex CLI (your ChatGPT plan)** or
+**Gemini CLI (your Google account)**. Mtrini runs that program in your project folder, sends it
+your message on stdin, and shows its replies and tool steps in the thread. The next message
+continues the same CLI session.
+
+Mtrini doesn't log in to those services, ask for your password, or read the CLI's credential
+files. It runs the vendor's own program, so the turn counts against your plan under that
+vendor's terms, just as if you'd typed it in a terminal.
+
+| Mtrini mode | Claude Code | Codex CLI | Gemini CLI |
+|---|---|---|---|
+| Plan, Read-only | `--permission-mode plan` | `-s read-only` | `--approval-mode plan` |
+| Ask before edits | `acceptEdits` | `-s workspace-write` | `auto_edit` |
+| Auto | `bypassPermissions` | `--full-auto` | `yolo` |
+
+In this mode the CLI uses its own tools and approvals, so Mtrini's approval cards, rewind,
+subagents and hooks don't apply, and images aren't passed on.
 
 Slash commands: `/help /clear /compact /init /agents /permissions /skills /mcp /settings`.
 Project memory: `.mtrini/instructions.md`, `.mtrini/skills/*/SKILL.md`, `.mtrini/agents/*.md`.

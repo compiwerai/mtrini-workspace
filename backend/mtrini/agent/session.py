@@ -51,12 +51,14 @@ class Session:
     turn: int = 0  # number of user turns so far (checkpoints are keyed by turn)
     turn_index: dict[str, int] = field(default_factory=dict)  # turn -> index of its user message
     persisted: bool = True
+    external: dict[str, Any] = field(default_factory=dict)  # {cli, sessionId}: a Claude Code / Codex / Gemini CLI session
 
     def save(self, root: Path) -> None:
         if not self.persisted:
             return
         data = {"id": self.id, "messages": [m.to_dict() for m in self.messages], "todos": self.todos,
-                "pending": self.pending, "mode": self.mode, "turn": self.turn, "turnIndex": self.turn_index}
+                "pending": self.pending, "mode": self.mode, "turn": self.turn, "turnIndex": self.turn_index,
+                "external": self.external}
         _path(root, self.id).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
@@ -73,7 +75,8 @@ def load(root: Path, sid: str | None) -> Session:
         return Session(id=sid)
     return Session(id=sid, messages=[ChatMessage.from_dict(m) for m in d.get("messages", [])],
                    todos=d.get("todos", []), pending=d.get("pending"), mode=d.get("mode", "ask"),
-                   turn=d.get("turn", 0), turn_index=d.get("turnIndex", {}))
+                   turn=d.get("turn", 0), turn_index=d.get("turnIndex", {}),
+                   external=d.get("external") or {})
 
 
 def delete(root: Path, sid: str) -> None:

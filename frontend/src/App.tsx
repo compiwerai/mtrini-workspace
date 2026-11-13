@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, getRecents, getWorkspace, rawRequest, setExecOverride, setWorkspace, sse, touchRecent } from './api/client';
 import CommandMenu, { ActionId } from './components/CommandMenu';
 import { applySettings, loadSettings, saveSettings } from './lib/settings';
+import ArenaView from './components/ArenaView';
 import DiffPanel from './components/DiffPanel';
+import SwarmView from './components/SwarmView';
+import { notifyDone, saveFile } from './lib/notify';
 import FilesView from './components/FilesView';
 import ImagesView from './components/ImagesView';
 import MailView from './components/MailView';
@@ -13,9 +16,20 @@ import SettingsPanel from './components/SettingsPanel';
 import Sidebar, { Nav } from './components/Sidebar';
 import ThreadView, { BUILTIN_COMMANDS, Img, Msg, PlanDecision, Todo } from './components/ThreadView';
 import TopBar from './components/TopBar';
+import { I } from './components/Icon';
 import { UpdateBanner } from './components/Updates';
 import { PairingPrompt } from './components/RemotePanel';
 import WorkspacePicker from './components/WorkspacePicker';
+
+const REVIEW_PROMPT = `Review my uncommitted changes like a careful senior engineer. Don't change any files.
+
+1. Run git status and git diff (and git diff --cached) to see every change.
+2. Read the surrounding code where you need context.
+3. Report real problems only, most serious first: bugs, wrong logic, unhandled errors, security issues,
+   race conditions, broken edge cases, missing tests for risky code. For each one give the file and line,
+   what goes wrong in a concrete case, and the fix.
+4. Then, briefly, anything that should be simpler. Skip style nitpicks.
+If you find nothing serious, say so plainly.`;
 
 /** Human-readable tool output: command results as their actual text, file reads as content. */
 export function formatToolOutput(v: any): string {
@@ -43,7 +57,7 @@ function threadMsg(m: any): Msg {
 }
 
 const NAV_TITLES: Record<Nav, string> = {
-  thread: '', files: 'Files', images: 'Images', mcp: 'MCP servers', automations: 'Automations', skills: 'Skills', mail: 'Mail', settings: 'Settings',
+  thread: '', swarm: 'Swarm', arena: 'Arena', files: 'Files', images: 'Images', mcp: 'MCP servers', automations: 'Automations', skills: 'Skills', mail: 'Mail', settings: 'Settings',
 };
 
 export default function App() {
@@ -110,6 +124,14 @@ export default function App() {
 
   // projects opened before cloud sync existed: tell the backend about them so their sessions get saved too
   useEffect(() => { api.rememberWorkspaces(getRecents()).catch(() => {}); }, []);
+  useEffect(() => {
+    // Other parts of the app (composer, editor) post toasts and "ask Mtrini about this" requests as window events.
+    const toastH = (e: Event) => setToast(String((e as CustomEvent).detail || ''));
+    const askH = (e: Event) => useInSession(String((e as CustomEvent).detail || ''));
+    window.addEventListener('mtrini:toast', toastH);
+    window.addEventListener('mtrini:ask', askH);
+    return () => { window.removeEventListener('mtrini:toast', toastH); window.removeEventListener('mtrini:ask', askH); };
+  }); // re-bound each render so useInSession is current
   useEffect(() => {
     applySettings(loadSettings());
     loadContext();
@@ -269,10 +291,13 @@ export default function App() {
           setHooksUntrusted(true);
         } else if (ev.type === 'permission_request') {
           setPending({ tool: ev.tool, args: ev.args, rule: ev.rule, mcp: ev.mcp });
+          notifyDone('Mtrini needs your approval', `${ev.tool}: allow or deny in the app`);
         } else if (ev.type === 'error') {
           push({ role: 'assistant', text: `Error: ${ev.message}` });
         } else if (ev.type === 'done') {
           if (ev.pendingApproval) setPending(ev.pendingApproval);
+          else if (ev.pendingPlan) notifyDone('Mtrini has a plan for you', 'Review the plan in the app');
+          else notifyDone('Mtrini finished', acc || ev.content || 'The turn is done');
           loadThreads();
         }
       }
@@ -282,7 +307,7 @@ export default function App() {
     } finally { setBusy(false); setStatus(''); abort.current = null; }
   };
 
-  const send = async (text: string, images?: Img[]) => {
+  const send = async (text: string, images?: Img[], modeOverride?: string) => {
     const { provider, mid } = splitModel();
     if (!mid) { setToast('Pick a model id first (or configure a provider in Settings)'); return; }
     let tid = activeId;
@@ -299,7 +324,7 @@ export default function App() {
     // Threads from before 0.8 have no agent session yet: send the visible transcript once.
     const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant').map((m) => ({ role: m.role, content: m.text }));
     await stream(tid as string, {
-      provider, model: mid, message: text, history, permissionMode: permMode, effort: reasoning ? effort : 'off',
+      provider, model: mid, message: text, history, permissionMode: modeOverride || permMode, effort: reasoning ? effort : 'off',
       useSkills: loadSettings().useSkills, useInstructions: loadSettings().useInstructions,
       images: (images || []).map(({ mime, data }) => ({ mime, data })),
     });
@@ -351,6 +376,26 @@ export default function App() {
   const runCommand = async (name: string) => {
     const note = (text: string) => setMessages((m) => [...m, { role: 'note', text }]);
     if (name === 'clear') { newThread(); return; }
+    if (name === 'swarm') { setNav('swarm'); return; }
+    if (name === 'review') {
+      send(REVIEW_PROMPT, undefined, 'readonly');
+      return;
+    }
+    if (name === 'memory') {
+      try {
+        const m = await api.memory();
+        const strip = (t: string) => t.replace(/<!--.*?-->/g, '').trim();
+        note(`### Your memory
+${strip(m.user.text) || '_Empty._'}
+
+### Project memory
+${strip(m.project.text) || '_Empty._'}
+
+`
+          + 'The agent adds facts with its remember tool. Edit both in Settings → Agent → Memory.');
+      } catch { note('Could not read memory.'); }
+      return;
+    }
     if (name === 'compact') {
       if (!activeId) { note('Nothing to compact yet.'); return; }
       const { provider, mid } = splitModel();
@@ -402,6 +447,27 @@ export default function App() {
     setSeed((s) => ({ text, n: (s?.n || 0) + 1 }));
   };
 
+  const [writingMsg, setWritingMsg] = useState(false);
+  const writeCommitMsg = async () => {
+    const { provider, mid } = splitModel();
+    setWritingMsg(true);
+    try {
+      const r = await api.commitMessage(provider, mid);
+      if (r.error) setToast(r.error);
+      else if (r.message) setCommitMsg(r.message);
+    } catch (e: any) { setToast(`Could not write a message: ${String(e.message || e).slice(0, 200)}`); }
+    finally { setWritingMsg(false); }
+  };
+
+  const exportThread = async (format: 'html' | 'md') => {
+    if (!activeId) { setToast('Open a session first'); return; }
+    try {
+      const f = await api.exportThread(activeId, format);
+      saveFile(f.name, f.text, format === 'html' ? 'text/html' : 'text/markdown');
+      setToast(`Saved ${f.name}. Tool outputs are left out, so file contents and secrets stay on your computer.`);
+    } catch (e: any) { setToast(`Export failed: ${e.message}`); }
+  };
+
   const doCommit = async () => {
     if (!commitMsg.trim()) return;
     try {
@@ -432,6 +498,7 @@ export default function App() {
           <TopBar title={nav === 'thread' ? title : NAV_TITLES[nav]} project={project}
             onOpen={() => api.openFolder().catch(() => setToast('Could not open folder'))}
             onCommit={() => setCommiting(true)}
+            onExport={nav === 'thread' && activeId ? exportThread : undefined}
             diffOpen={diffOpen} onToggleDiff={() => setDiffOpen((v) => !v)} />
           <div className="body">
             {nav === 'thread' && (
@@ -448,6 +515,8 @@ export default function App() {
                 effort={effort} setEffort={setEffort} />
             )}
             {nav === 'files' && <FilesView openSignal={openSignal} />}
+            {nav === 'swarm' && <SwarmView />}
+            {nav === 'arena' && <ArenaView onUse={useInSession} />}
             {nav === 'images' && <ImagesView />}
             {nav === 'mcp' && <MCPView />}
             {nav === 'skills' && <SkillsView onUse={useInSession} />}
@@ -476,6 +545,8 @@ export default function App() {
             if (a === 'new-thread') newThread();
             else if (a === 'go-files') setNav('files');
             else if (a === 'go-images') setNav('images');
+            else if (a === 'go-arena') setNav('arena');
+            else if (a === 'go-swarm') setNav('swarm');
             else if (a === 'go-mcp') setNav('mcp');
             else if (a === 'go-skills') setNav('skills');
             else if (a === 'go-automations') setNav('automations');
@@ -493,7 +564,9 @@ export default function App() {
             <label className="f">Message</label>
             <textarea className="t" rows={3} value={commitMsg} onChange={(e) => setCommitMsg(e.target.value)} placeholder="Describe the change" />
             <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn primary" onClick={doCommit}>Commit</button>
+              <button className="btn primary" onClick={doCommit} disabled={!commitMsg.trim()}>Commit</button>
+              <button className="btn" onClick={writeCommitMsg} disabled={writingMsg} title="The selected model writes a message from the staged changes (or all changes if nothing is staged)">
+                {I.wand()} {writingMsg ? 'Writing…' : 'Write with AI'}</button>
               <button className="btn" onClick={() => setCommiting(false)}>Cancel</button>
             </div>
           </div>

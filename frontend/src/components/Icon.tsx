@@ -11,6 +11,17 @@ function base(props: React.SVGProps<SVGSVGElement> | undefined, ...kids: React.R
 }
 
 export const I = {
+  swarm: (p?: React.SVGProps<SVGSVGElement>) => base(p,
+    <circle key="a" cx="8" cy="3.6" r="1.8" />, <circle key="b" cx="3.6" cy="11.6" r="1.8" />, <circle key="c" cx="12.4" cy="11.6" r="1.8" />,
+    <path key="d" d="M7 5.2L4.6 10M9 5.2l2.4 4.8M5.4 11.6h5.2" />),
+  mic: (p?: React.SVGProps<SVGSVGElement>) => base(p,
+    <rect key="a" x="5.8" y="1.8" width="4.4" height="7.4" rx="2.2" />, <path key="b" d="M3.5 7.8a4.5 4.5 0 009 0M8 12.3v2" />),
+  columns: (p?: React.SVGProps<SVGSVGElement>) => base(p,
+    <rect key="a" x="1.8" y="2.5" width="5.2" height="11" rx="1.2" />, <rect key="b" x="9" y="2.5" width="5.2" height="11" rx="1.2" />),
+  download: (p?: React.SVGProps<SVGSVGElement>) => base(p,
+    <path key="a" d="M8 2v8M4.8 7l3.2 3.2L11.2 7M2.5 13.5h11" />),
+  wand: (p?: React.SVGProps<SVGSVGElement>) => base(p,
+    <path key="a" d="M2.5 13.5l8-8M9 4l3 3" />, <path key="b" d="M12.5 1.8v2M11.5 2.8h2M4 2.3v1.4M3.3 3h1.4" />),
   folder: (p?: React.SVGProps<SVGSVGElement>) => base(p,
     <path key="a" d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v5c0 .8-.7 1.5-1.5 1.5h-10c-.8 0-1.5-.7-1.5-1.5v-6.5z" />),
   file: (p?: React.SVGProps<SVGSVGElement>) => base(p,
