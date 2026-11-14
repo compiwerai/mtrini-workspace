@@ -14,7 +14,7 @@ from typing import Any
 
 from ..providers import ChatMessage
 
-PRIVATE_DIRS = ("sessions/", "checkpoints/")
+PRIVATE_DIRS = ("sessions/", "checkpoints/", "browser/", "browser-shots/")
 
 
 def keep_private(root: Path) -> None:

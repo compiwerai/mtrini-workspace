@@ -135,7 +135,7 @@ async def run_agent(root: Path, provider_name: str, model: str, user_text: str,
                     max_steps: int | None = None, effort: str = "off", *,
                     thread_id: str | None = None, resume: dict | None = None,
                     images: list[dict] | None = None, system_extra: str = "", context: str = "",
-                    depth: int = 0) -> AsyncIterator[dict[str, Any]]:
+                    depth: int = 0, system_base: str = "") -> AsyncIterator[dict[str, Any]]:
     from ..providers import agent_cli
 
     if provider_name in agent_cli.CLIS:  # the user's own Claude Code / Codex / Gemini CLI runs the turn
@@ -170,7 +170,7 @@ async def run_agent(root: Path, provider_name: str, model: str, user_text: str,
                mcp_map, thread_id, max_steps, depth)
 
     if resume:
-        if s.pending and s.pending.get("kind") != "plan" and permission_mode in ("ask", "auto", "readonly"):
+        if s.pending and s.pending.get("kind") != "plan" and permission_mode in ("ask", "auto", "readonly", "bot"):
             s.mode = permission_mode  # the mode picked in the composer when the user answered
         async for ev in _resume(run, resume):
             yield ev
@@ -184,7 +184,8 @@ async def run_agent(root: Path, provider_name: str, model: str, user_text: str,
 
     first_turn = not s.messages
     if first_turn:
-        sys_text = SYSTEM_PROMPT + (f"\n\n{system_extra}" if system_extra else "")
+        # system_base replaces the coding-agent prompt (Mtrini Bots gives each bot its own).
+        sys_text = (system_base or SYSTEM_PROMPT) + (f"\n\n{system_extra}" if system_extra else "")
         from .. import memory
 
         mem = memory.for_prompt(root)

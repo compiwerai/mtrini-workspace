@@ -22,6 +22,30 @@ like Claude Code or Cursor's agent. It's a desktop app for Windows and Linux, Ap
 
 Open it, pick a folder, type what you want. That's the whole setup.
 
+## Mtrini Bots
+
+A separate app, built from this repository: its own installer, window and icon. It shares the engine and
+your model settings with Mtrini Workspace, and neither app needs the other.
+
+Named bots that keep working and ask before they act:
+
+- **A bot has a job, a folder, a memory and a mascot of its own.** Its notes and results are plain files on your
+  computer. A starter crew (Atlas, Scout, Sentinel, Quill, Herald) is there on first run, with routines switched off.
+- **Routines** run on a schedule (every morning, every few hours, on chosen days) and report to an **inbox**.
+- **Its own browser.** A bot drives the Edge or Chrome already on your machine with a separate profile. It never
+  types passwords: you press *Show browser* and sign in yourself, once.
+- **Approvals.** Running a command, or anything that sends, posts, buys, deletes or confirms, stops and waits
+  for your yes in the inbox.
+- **Web search with no key.** Bots search through DuckDuckGo's plain page, or their own browser. Add a Brave,
+  Tavily or SearXNG setting to use that instead.
+- **Telegram** (optional): text your bots, get their reports, approve or deny from your phone.
+- **Always on** (optional): keep running when the window is closed, and start when you sign in.
+
+Bots run on your computer, not on a cloud machine: they work while it is on and awake, and stop when it is off.
+
+Build it on Windows with `scripts\build-bots-exe.ps1`, then `iscc scripts\setup-bots.iss`. In a checkout:
+`python -m uvicorn mtrini.bots.app:app --app-dir backend --port 8789`, then open http://127.0.0.1:8789.
+
 ## Pick any brain
 
 - **Free, built in:** Qwen3.8 27B, sponsored by [Heabsy](https://heabsy.com). Daily limit;

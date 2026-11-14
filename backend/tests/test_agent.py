@@ -260,11 +260,49 @@ def test_web_fetch_rejects_non_http(tmp_path):
     assert res.ok is False and "http" in res.error
 
 
-def test_web_search_explains_setup(tmp_path):
-    from mtrini.tools import registry
+DDG_PAGE = """<div class="result"><a rel="nofollow" class="result__a" href="https://opencode.ai/">Open<b>Code</b> &amp; friends</a>
+<a class="result__snippet" href="https://opencode.ai/">The open source <b>coding agent</b>.</a></div>
+<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa%3Fb%3D1&amp;rut=x">Example</a>
+<a class="result__snippet" href="#">Second.</a></div>
+<div class="result"><a class="result__a" href="https://duckduckgo.com/y.js?ad=1">An ad</a></div>"""
 
-    res = anyio.run(registry.BY_NAME["web_search"].run, tmp_path, {"query": "x"})
-    assert res.ok is False and "Settings" in res.error
+
+def test_web_search_works_with_no_key(tmp_path):
+    import httpx
+    import respx
+
+    from mtrini.tools import registry, web
+
+    with respx.mock:
+        respx.post(web.DDG).mock(return_value=httpx.Response(200, text=DDG_PAGE))
+        res = anyio.run(registry.BY_NAME["web_search"].run, tmp_path, {"query": "coding agent"})
+    assert res.ok, res.error
+    assert res.output["provider"] == "duckduckgo"
+    assert res.output["results"] == [
+        {"title": "OpenCode & friends", "url": "https://opencode.ai/", "snippet": "The open source coding agent."},
+        {"title": "Example", "url": "https://example.org/a?b=1", "snippet": "Second."}]
+
+
+def test_web_search_falls_back_to_the_browser_then_explains(tmp_path, monkeypatch):
+    import httpx
+    import respx
+
+    from mtrini.tools import registry, web
+
+    async def found(root, q):
+        return [{"title": "From the browser page", "url": "https://example.com/", "snippet": ""}]
+
+    async def nothing(root, q):
+        raise RuntimeError("no browser")
+
+    with respx.mock:
+        respx.post(web.DDG).mock(return_value=httpx.Response(202, text="blocked"))
+        monkeypatch.setattr(web, "_browser_search", found)
+        ok = anyio.run(registry.BY_NAME["web_search"].run, tmp_path, {"query": "x"})
+        monkeypatch.setattr(web, "_browser_search", nothing)
+        bad = anyio.run(registry.BY_NAME["web_search"].run, tmp_path, {"query": "x"})
+    assert ok.ok and ok.output["provider"] == "browser" and ok.output["results"][0]["url"] == "https://example.com/"
+    assert bad.ok is False and "Settings" in bad.error
 
 
 @pytest.mark.parametrize("cmd,prefix", [("git status", "git status"), ("ls -la", "ls"),

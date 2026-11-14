@@ -10,8 +10,6 @@ import threading
 
 import uvicorn
 
-from mtrini.main import app
-
 # Windowed (PyInstaller --noconsole) apps have sys.stdout/sys.stderr = None;
 # libraries like uvicorn assume they exist. Point them at devnull first.
 if sys.stdout is None:
@@ -19,9 +17,20 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")  # noqa: PTH123
 
-TITLE = "Mtrini Workspace"
-URL = "http://127.0.0.1:8787"
-PORT = 8787
+# Two apps share this launcher. Mtrini Bots (bots_desktop.py) has its own server, port and window; it shares
+# the engine and ~/.mtrini with Mtrini Workspace, so a model you set up in one works in the other.
+BOTS = os.environ.get("MTRINI_APP") == "bots" or "--bots" in sys.argv[1:]
+# "--background" serves with no window: this is what starts at sign-in so bots keep their schedule.
+BACKGROUND = BOTS and "--background" in sys.argv[1:]
+if BOTS:
+    from mtrini.bots.app import app
+
+    TITLE, PORT = "Mtrini Bots", 8789
+else:
+    from mtrini.main import app
+
+    TITLE, PORT = "Mtrini Workspace", 8787
+URL = f"http://127.0.0.1:{PORT}"
 
 
 def _resource(*parts: str) -> str | None:
@@ -43,6 +52,33 @@ def _log(msg: str) -> None:
             f.write(msg + "\n")
     except Exception:
         pass
+
+
+def _port_free() -> bool:
+    """False when another copy of the app is already serving: then this one only opens a window onto it."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", PORT))
+            return True
+        except OSError:
+            return False
+
+
+def _stay_for_bots(owns_server: bool) -> bool:
+    """After the window closes: keep serving when the user asked for it and a bot has work to do."""
+    if not owns_server or not BOTS:
+        return False
+    try:
+        from mtrini.bots import background
+
+        return background.should_stay()
+    except Exception:
+        import traceback
+
+        _log("background check failed:\n" + traceback.format_exc())
+        return False
 
 
 def _serve() -> None:
@@ -112,6 +148,8 @@ def _linux_main() -> None:
 
 def _install_update_on_exit() -> None:
     """Closing the app installs a downloaded update (Windows: silent installer; AppImage: file swap)."""
+    if BOTS:
+        return
     try:
         from mtrini import updater
 
@@ -125,20 +163,41 @@ def _install_update_on_exit() -> None:
 
 def main() -> None:
     _log("desktop starting")
-    threading.Thread(target=_serve, daemon=True).start()
-    from mtrini import updater
+    os.environ["MTRINI_DESKTOP"] = "1"
+    owns_server = _port_free()
+    if BACKGROUND and not owns_server:
+        _log("background start skipped: the app is already running")
+        return
+    if owns_server:
+        threading.Thread(target=_serve, daemon=True).start()
+    else:
+        _log("joining the copy that is already running")
+    if not BOTS:  # Mtrini Bots has no self-update yet; the Workspace updater would fetch the wrong installer
+        from mtrini import updater
 
-    threading.Thread(target=updater.background_loop, daemon=True).start()
+        threading.Thread(target=updater.background_loop, daemon=True).start()
+    if BACKGROUND:
+        _log("serving in the background for bots")
+        threading.Event().wait()
     if sys.platform.startswith("linux"):
         _linux_main()
+        if _stay_for_bots(owns_server):
+            _log("window closed; staying in the background for bots")
+            threading.Event().wait()
         _install_update_on_exit()
         return
     try:
         import webview  # type: ignore
 
         _log("webview starting")
-        webview.create_window(TITLE, URL, width=1400, height=900, min_size=(1100, 700))
+        if BOTS:
+            webview.create_window(TITLE, URL, width=1180, height=820, min_size=(900, 620))
+        else:
+            webview.create_window(TITLE, URL, width=1400, height=900, min_size=(1100, 700))
         webview.start()
+        if _stay_for_bots(owns_server):  # the window was closed, but a bot still has work
+            _log("window closed; staying in the background for bots")
+            threading.Event().wait()
         _install_update_on_exit()  # the window was closed
     except Exception:
         import traceback

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from . import Tool
+from .browser import TOOLS as BROWSER
 from .extra import TOOLS as EXTRA
 from .filesystem import TOOLS as FS
 from .web import TOOLS as WEB
@@ -20,7 +21,7 @@ MEMORY = [Tool("remember", "Save a short, lasting fact to memory so future sessi
                                                  "scope": {"type": "string", "enum": ["project", "user"]}},
                 "required": ["fact"]}, _h_remember)]
 
-ALL: list[Tool] = [*FS, *EXTRA, *WEB, *MEMORY]
+ALL: list[Tool] = [*FS, *EXTRA, *WEB, *BROWSER, *MEMORY]
 BY_NAME = {t.name: t for t in ALL}
 
 ORDER = {"read": 0, "write": 1, "execute": 2, "network": 3, "destructive": 4}
@@ -31,9 +32,12 @@ def openai_schema() -> list[dict]:
 
 
 def needs_approval(tool: Tool, mode: str) -> bool:
-    """mode: auto (allow all) | ask (confirm write+) | readonly | plan (read-only until a plan is approved)."""
+    """mode: auto (allow all) | ask (confirm write+) | readonly | plan (read-only until a plan is approved) |
+    bot (a Mtrini Bot in its own folder: files and browsing run, commands and acting for the user ask)."""
     if mode == "auto":
         return False
+    if mode == "bot":
+        return tool.permission in ("execute", "destructive")
     if mode in ("readonly", "plan"):
         return tool.permission != "read"
     # ask: write/execute/network/destructive need approval

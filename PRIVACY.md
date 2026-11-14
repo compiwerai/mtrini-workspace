@@ -10,6 +10,12 @@ Mtrini Workspace is local-first:
 - **No telemetry.** No analytics, no tracking, no mandatory cloud.
 - Local inference traffic stays on your machine / LAN endpoint.
 - Cloud API traffic goes only to the provider you selected and configured.
+- **Web search.** When the agent or a bot searches the web and you have not set a search service, the query goes
+  to DuckDuckGo (html.duckduckgo.com), or to a Bing results page opened in the agent's own browser if that gives
+  nothing. Set Brave, Tavily or your own SearXNG in Settings -> Web search and queries go only there.
+- **Mtrini Bots.** A bot's files, memory, conversation and inbox stay in `~/.mtrini/bots/` on your computer. Its
+  browser uses its own profile, separate from yours. If you connect Telegram, messages you exchange with your bots
+  pass through Telegram's servers; the bot token is kept in the OS keychain.
 - Requests to OpenRouter name the app ("Mtrini Workspace" and its GitHub URL) so it
   appears in OpenRouter's public app rankings. Nothing about you or your code is added.
 - **The free built-in model** (Qwen3.8 27B, sponsored by Heabsy) sends your requests through

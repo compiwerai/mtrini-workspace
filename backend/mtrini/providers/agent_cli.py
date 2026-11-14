@@ -1,4 +1,4 @@
-"""Use the coding-agent subscription you already pay for: Claude Code, Codex or Gemini CLI.
+"""Use the coding agent you already have: Claude Code, Codex, Gemini CLI or OpenCode (and its free models).
 
 Mtrini does not log in to those services and never sees a token. It runs the official
 CLI that you installed and signed in to yourself, in your project folder, and shows its
@@ -11,6 +11,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,9 +40,15 @@ CLIS: dict[str, CLI] = {c.id: c for c in (
     CLI("gemini-cli", "Gemini CLI (your Google account)", "gemini",
         "npm install -g @google/gemini-cli", "Run `gemini` in a terminal once and choose Sign in with Google.",
         (("default", "Gemini CLI default"), ("gemini-2.5-pro", "Gemini 2.5 Pro"), ("gemini-2.5-flash", "Gemini 2.5 Flash"))),
+    # OpenCode's free models only work through OpenCode itself (its terms), so Mtrini runs your OpenCode.
+    # The model list is read from `opencode models`, so it is always what your OpenCode offers today.
+    CLI("opencode", "OpenCode (free models)", "opencode",
+        "Get OpenCode from https://opencode.ai", "Its free models need no sign-in.",
+        (("default", "OpenCode default"),)),
 )}
 
 _SAFE = re.compile(r"^[\w.:\-\[\]]{1,80}$")
+_SAFE_OC = re.compile(r"^[\w.:\-/#@]{1,120}$")  # OpenCode models look like provider/model#variant
 
 
 def find(cli_id: str) -> str | None:
@@ -50,7 +58,40 @@ def find(cli_id: str) -> str | None:
     return env or _search(c.exe)
 
 
+def _opencode_cli() -> str | None:
+    """OpenCode's command-line program. The desktop app puts a launcher called `opencode` on PATH that opens
+    its window, so look for the real CLI it ships (`opencode-cli`) before trusting PATH."""
+    home = Path.home()
+    local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
+    spots = [
+        local / "Programs" / "@opencode-aidesktop" / "resources" / "opencode-cli.exe",
+        local / "Programs" / "OpenCode" / "resources" / "opencode-cli.exe",
+        Path("/Applications/OpenCode.app/Contents/Resources/opencode-cli"),
+        Path("/opt/OpenCode/resources/opencode-cli"),
+        home / ".opencode" / "bin" / "opencode.exe",
+        home / ".opencode" / "bin" / "opencode",
+    ]
+    hit = shutil.which("opencode-cli")
+    if hit:
+        return hit
+    for p in spots:
+        if p.exists():
+            return str(p)
+    hit = shutil.which("opencode")
+    if not hit:
+        return None
+    here = Path(hit).resolve().parent
+    for bundled in (here / "resources" / "opencode-cli.exe", here / "resources" / "opencode-cli"):
+        if bundled.exists():  # PATH pointed at the desktop app: use the CLI inside it
+            return str(bundled)
+    if (here / "resources" / "app.asar").exists():  # a desktop app with no CLI: running it would open a window
+        return None
+    return hit
+
+
 def _search(exe: str) -> str | None:
+    if exe == "opencode":
+        return _opencode_cli()
     hit = shutil.which(exe)
     if hit:
         return hit
@@ -66,12 +107,59 @@ def meta() -> list[dict[str, Any]]:
     out = []
     for c in CLIS.values():
         path = find(c.id)
+        if c.id == "opencode":
+            hint = ("Found OpenCode on this computer: its free models are ready to use, with no key. Mtrini runs your "
+                    "OpenCode for each turn, under OpenCode's terms. Free models are offered for a limited time and "
+                    "some keep your prompts to improve the model: check each one at opencode.ai."
+                    if path else f"Not installed. {c.install}. Its free models then show up here by themselves.")
+        else:
+            hint = (f"Runs your own {c.exe} program, signed in with your own account. Mtrini never sees "
+                    f"your login. {c.login} Usage counts against your plan, under that service's terms."
+                    if path else f"Not installed. Install it with `{c.install}`, then: {c.login}")
         out.append({"id": c.id, "label": c.label, "needsKey": False, "agentCli": True, "installed": bool(path),
-                    "hint": (f"Runs your own {c.exe} program, signed in with your own account. Mtrini never sees "
-                             f"your login. {c.login} Usage counts against your plan, under that service's terms."
-                             if path else f"Not installed. Install it with `{c.install}`, then: {c.login}"),
-                    "defaultModel": "default"})
+                    "hint": hint, "defaultModel": "default"})
     return out
+
+
+_OC_CACHE: dict[str, Any] = {"at": 0.0, "exe": "", "models": []}
+OC_TTL = 600  # seconds
+
+
+def is_free_model(model: str) -> bool:
+    """OpenCode's own free models: `opencode/...-free`, plus its stealth free model."""
+    name = model.split("/", 1)[1] if model.startswith("opencode/") else ""
+    return bool(name) and ("free" in name.split("#")[0].split("-") or name.split("#")[0] == "big-pickle")
+
+
+def parse_models(text: str) -> list[tuple[str, str]]:
+    """`opencode models` prints one provider/model per line. Keep OpenCode's own, free ones first."""
+    own = sorted({ln.strip() for ln in text.splitlines() if ln.strip().startswith("opencode/") and _SAFE_OC.match(ln.strip())})
+    free = [m for m in own if is_free_model(m)]
+    paid = [m for m in own if not is_free_model(m)]
+    label = lambda m: m.split("/", 1)[1]  # noqa: E731
+    return [(m, f"{label(m)} (free)") for m in free] + [(m, label(m)) for m in paid]
+
+
+def opencode_models() -> list[tuple[str, str]]:
+    """What your OpenCode offers right now, cached for a few minutes. Falls back to OpenCode's default."""
+    exe = find("opencode")
+    if not exe:
+        return list(CLIS["opencode"].models)
+    now = time.time()
+    if _OC_CACHE["models"] and _OC_CACHE["exe"] == exe and now - _OC_CACHE["at"] < OC_TTL:
+        return list(_OC_CACHE["models"])
+    from ..proc import NO_WINDOW
+
+    try:
+        out = subprocess.run([exe, "models"], capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL,
+                             encoding="utf-8", errors="replace", **NO_WINDOW).stdout
+        models = parse_models(out)
+    except (OSError, subprocess.SubprocessError):
+        models = []
+    if not models:
+        return list(CLIS["opencode"].models)
+    _OC_CACHE.update({"at": now, "exe": exe, "models": models})
+    return list(models)
 
 
 class AgentCLIProvider:
@@ -82,7 +170,8 @@ class AgentCLIProvider:
         self.cli = CLIS[cli_id]
 
     async def list_models(self, **kw: Any) -> list[ModelInfo]:
-        return [ModelInfo(id=m, label=l, provider=self.name, capabilities={"tools": True}) for m, l in self.cli.models]
+        models = opencode_models() if self.name == "opencode" else list(self.cli.models)
+        return [ModelInfo(id=m, label=l, provider=self.name, capabilities={"tools": True}) for m, l in models]
 
     async def chat(self, *a: Any, **kw: Any) -> dict[str, Any]:
         raise RuntimeError(f"{self.cli.label} runs its own agent; it can't be used as a plain chat model here.")
@@ -109,6 +198,7 @@ class AgentCLIProvider:
 #   auto            -> the CLI's own "allow everything" mode (the same as Mtrini's auto)
 
 def command(cli_id: str, exe: str, model: str, mode: str, session_id: str | None) -> list[str]:
+    oc_model = model if model and model != "default" and _SAFE_OC.match(model) else ""
     model = model if model and model != "default" and _SAFE.match(model) else ""
     sid = session_id if session_id and _SAFE.match(session_id) else ""
     if cli_id == "claude-code":
@@ -127,6 +217,19 @@ def command(cli_id: str, exe: str, model: str, mode: str, session_id: str | None
         if model:
             cmd += ["-m", model]
         return cmd + (["resume", sid, "-"] if sid else ["-"])
+    if cli_id == "opencode":
+        # No --auto unless Mtrini's own mode is auto: otherwise OpenCode follows the permissions in your
+        # OpenCode settings. --archived keeps these runs out of your OpenCode session list.
+        cmd = [exe, "run", "--format", "json", "--archived"]
+        if mode in ("plan", "readonly"):
+            cmd += ["--agent", "plan"]
+        elif mode == "auto":
+            cmd += ["--auto"]
+        if oc_model:
+            cmd += ["--model", oc_model]
+        if sid:
+            cmd += ["--session", sid]
+        return cmd
     if cli_id == "gemini-cli":
         am = {"plan": "plan", "readonly": "plan", "auto": "yolo"}.get(mode, "auto_edit")
         cmd = [exe, "-o", "stream-json", "--approval-mode", am, "-p", " "]
@@ -232,12 +335,39 @@ def parse_gemini(ev: dict) -> tuple[list[dict], str | None]:
     return out, None
 
 
-PARSERS = {"claude-code": parse_claude, "codex-cli": parse_codex, "gemini-cli": parse_gemini}
+def parse_opencode(ev: dict) -> tuple[list[dict], str | None]:
+    t, out = ev.get("type"), []
+    part = ev.get("part") or {}
+    sid = ev.get("sessionID") or part.get("sessionID")
+    if t == "tool_use":
+        state = part.get("state") or {}
+        cid = part.get("id") or part.get("partID")
+        name = part.get("tool", "tool")
+        failed = state.get("status") == "error"
+        out.append({"type": "tool_start", "tool": name, "id": cid, "args": state.get("input") or {}})
+        text = str(state.get("error") if failed else state.get("output") or "")[:20000]
+        out.append({"type": "tool_result", "tool": name, "id": cid, "ok": not failed,
+                    "output": None if failed else text, "error": text or "failed" if failed else None})
+    elif t == "text" and part.get("text"):
+        out.append({"type": "assistant_delta", "delta": part["text"]})
+    elif t == "step_finish" and part.get("reason") == "stop":
+        out.append({"type": "final", "content": None, "usage": {"costUsd": part.get("cost"), "tokens": part.get("tokens")}})
+    elif t == "error":
+        err = ev.get("error")
+        data = err.get("data") if isinstance(err, dict) and isinstance(err.get("data"), dict) else {}
+        msg = data.get("message") or (err.get("message") or err.get("name") if isinstance(err, dict) else err) or ev.get("message")
+        out.append({"type": "error", "message": f"OpenCode stopped: {str(msg or 'failed')[:600]}"})
+    return out, sid
+
+
+PARSERS = {"claude-code": parse_claude, "codex-cli": parse_codex, "gemini-cli": parse_gemini, "opencode": parse_opencode}
 
 
 def login_hint(cli_id: str, text: str) -> str | None:
     """Turn a 'not signed in' message into the next step, without echoing anything secret."""
     low = text.lower()
     if any(k in low for k in ("login", "log in", "sign in", "auth method", "unauthorized", "api key", "not authenticated", "401")):
+        if cli_id == "opencode":
+            return "OpenCode refused this model. Pick one of its free models, or connect the provider inside OpenCode."
         return f"{CLIS[cli_id].label} is installed but not signed in. {CLIS[cli_id].login}"
     return None

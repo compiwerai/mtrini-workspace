@@ -70,7 +70,9 @@ async def run_external(root: Path, cli_id: str, model: str, user_text: str, perm
     yield {"type": "turn", "turn": s.turn}
     yield {"type": "status", "status": "planning", "message": f"Starting {cli.label}…"}
 
-    env = {**os.environ, "NO_COLOR": "1", "CI": os.environ.get("CI", "")}
+    # PWD too: some CLIs (OpenCode) take the project folder from it, and it is inherited from whoever
+    # started Mtrini, so without this they would work in the wrong folder.
+    env = {**os.environ, "NO_COLOR": "1", "CI": os.environ.get("CI", ""), "PWD": str(root)}
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, cwd=str(root), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -90,6 +92,7 @@ async def run_external(root: Path, cli_id: str, model: str, user_text: str, perm
     texts: list[str] = []
     partial = ""
     final, failed, steps, plain = "", "", 0, []
+    last_text = ""
     t0 = time.time()
 
     async def lines():
@@ -124,6 +127,7 @@ async def run_external(root: Path, cli_id: str, model: str, user_text: str, perm
                             texts.append(partial)
                             partial = ""
                         texts.append(out["delta"])
+                        last_text = out["delta"]
                     yield out
                     continue
                 if partial and t in ("tool_start", "final", "error"):
@@ -168,6 +172,7 @@ async def run_external(root: Path, cli_id: str, model: str, user_text: str, perm
 
     if partial:
         _log(root, thread_id, "assistant", partial)
+        last_text = partial
     err = (await proc.stderr.read()).decode("utf-8", "replace")[-4000:] if proc.stderr else ""
     s.external = ext
     s.save(root)
@@ -179,4 +184,4 @@ async def run_external(root: Path, cli_id: str, model: str, user_text: str, perm
         _log(root, thread_id, "assistant", f"Error: {msg}")
         yield {"type": "error", "message": msg}
         return
-    yield {"type": "done", "content": final, "steps": steps, "via": cli_id}
+    yield {"type": "done", "content": final or last_text, "steps": steps, "via": cli_id}
