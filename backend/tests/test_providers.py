@@ -102,6 +102,11 @@ def test_free_model_listed_first_only_when_relay_is_set(client, monkeypatch):
 
 
 def test_compiwer_free_goes_through_its_own_relay(monkeypatch):
+    import anyio
+    import httpx
+
+    from mtrini.providers import ChatMessage, free
+
     monkeypatch.setenv("MTRINI_COMPIWER_FREE_URL", "https://compiwer.test")
     seen = {}
 
