@@ -1,6 +1,11 @@
-// Mtrini free-model relay: holds the sponsored Heabsy key, forwards chat requests from
-// Mtrini Workspace, and keeps spending inside daily limits. Plain JavaScript with no
-// Cloudflare imports, so the same logic runs in the Worker and in Node tests.
+// Mtrini free-model relay: holds the upstream key(s), forwards chat requests from Mtrini
+// Workspace, and keeps spending inside daily limits. Plain JavaScript with no Cloudflare
+// imports, so the same logic runs in the Worker and in Node tests.
+//
+// One copy of this code runs per free model: "mtrini-free" (Qwen3.8 27B, sponsored by Heabsy,
+// wrangler.toml) and "compiwer-free" (DeepSeek V4.1 Flash, wrangler.compiwer.toml). Only the
+// settings differ. Keys come from the secret UPSTREAM_KEYS (one or more, separated by commas or
+// new lines) or, for the first relay, HEABSY_KEY.
 //
 // Stored per UTC day, erased when the day changes: spend per install id (a random id the
 // app makes), spend per hashed IP address, and total spend. Prompts are never stored.
@@ -21,7 +26,25 @@ export const DEFAULTS = {
   MAX_TOKENS: "8192",
   MAX_BODY_BYTES: "300000",
   UPGRADE_URL: "https://platform.heabsy.com/r/mtrini",
+  UPGRADE_NAME: "Heabsy", // "add your own <UPGRADE_NAME> key"; leave UPGRADE_URL empty for no such line
+  SERVICE: "mtrini-free",
+  OWNER: "heabsy",
 };
+
+/** The upstream keys: UPSTREAM_KEYS (commas or new lines between them), else HEABSY_KEY. */
+export function keysOf(env) {
+  return String(env?.UPSTREAM_KEYS || env?.HEABSY_KEY || "").split(/[\s,]+/).filter(Boolean);
+}
+
+// With several keys, each request starts on the next one, and a key that is refused (out of
+// quota, rate limited, revoked) hands the request to the next.
+let turn = 0;
+const RETRY_NEXT_KEY = new Set([401, 402, 403, 429]);
+
+/** " For more, add your own X key: URL" when an upgrade link is set, else nothing. */
+function more(c, lead = "For more,") {
+  return c.UPGRADE_URL ? ` ${lead} add your own ${c.UPGRADE_NAME} key: ${c.UPGRADE_URL}` : "";
+}
 
 const ALLOWED_FIELDS = ["messages", "tools", "tool_choice", "temperature", "top_p", "stop", "stream",
   "response_format", "parallel_tool_calls", "seed", "presence_penalty", "frequency_penalty"];
@@ -84,12 +107,12 @@ export class Limiter {
     const total = (await this.storage.get("total")) || 0;
     if (total >= num(c.GLOBAL_DAILY_USD)) {
       return deny("global_limit", "The free model has reached today's limit for everyone. It resets at "
-        + `midnight UTC. To keep going now, add your own Heabsy key: ${c.UPGRADE_URL}`);
+        + "midnight UTC." + more(c, "To keep going now,"));
     }
     if (((await this.storage.get(`u:${user}`)) || 0) >= num(c.USER_DAILY_USD)
         || ((await this.storage.get(`ip:${ip}`)) || 0) >= num(c.IP_DAILY_USD)) {
-      return deny("daily_limit", "You've used today's free model allowance. It resets at midnight UTC. "
-        + `For more, add your own Heabsy key: ${c.UPGRADE_URL}`);
+      return deny("daily_limit", "You've used today's free model allowance. It resets at midnight UTC."
+        + more(c));
     }
     const m = Math.floor(now / 60000);
     if ((this.minute.get(`*:${m}`) || 0) >= num(c.GLOBAL_RPM)) {
@@ -196,14 +219,15 @@ async function route(request, env, deps) {
   const path = url.pathname.replace(/\/+$/, "");
 
   if (request.method === "GET" && (path === "" || path === "/health")) {
-    return json({ ok: true, service: "mtrini-free", model: cfg.MODEL, configured: Boolean(env?.HEABSY_KEY) });
+    return json({ ok: true, service: cfg.SERVICE, model: cfg.MODEL, configured: keysOf(env).length > 0 });
   }
   if (request.method === "GET" && path === "/v1/models") {
-    return json({ object: "list", data: [{ id: cfg.MODEL, object: "model", owned_by: "heabsy" }] });
+    return json({ object: "list", data: [{ id: cfg.MODEL, object: "model", owned_by: cfg.OWNER }] });
   }
   if (path !== "/v1/chat/completions") return error(404, "not_found", "Not found.");
   if (request.method !== "POST") return error(405, "method_not_allowed", "Use POST.");
-  if (!env?.HEABSY_KEY) return error(503, "not_configured", "The free model isn't set up yet.");
+  const keys = keysOf(env);
+  if (!keys.length) return error(503, "not_configured", "The free model isn't set up yet.");
 
   const user = request.headers.get("x-mtrini-install") || "";
   if (!/^[0-9a-f]{32}$/.test(user)) {
@@ -236,13 +260,22 @@ async function route(request, env, deps) {
   if (out.stream) out.stream_options = { include_usage: true };
 
   let upstream;
-  try {
-    upstream = await deps.fetch(`${cfg.UPSTREAM_URL.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${env.HEABSY_KEY}` },
-      body: JSON.stringify(out),
-    });
-  } catch {
+  const first = turn++ % keys.length;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[(first + i) % keys.length];
+    try {
+      upstream = await deps.fetch(`${cfg.UPSTREAM_URL.replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify(out),
+      });
+    } catch {
+      upstream = null;
+      continue;
+    }
+    if (!RETRY_NEXT_KEY.has(upstream.status)) break;
+  }
+  if (!upstream) {
     await deps.limiter.record(user, ip, 0);
     return error(502, "upstream_unreachable", "The free model is unreachable right now. Try again shortly.");
   }
@@ -250,8 +283,7 @@ async function route(request, env, deps) {
   if (!upstream.ok) {
     await deps.limiter.record(user, ip, 0);
     if (upstream.status === 402) {
-      return error(503, "paused", "The free model is paused for now. To keep going, add your own Heabsy "
-        + `key: ${cfg.UPGRADE_URL}`);
+      return error(503, "paused", "The free model is paused for now." + more(cfg, "To keep going,"));
     }
     if (upstream.status === 429) return error(429, "busy", "The free model is busy right now. Try again in a minute.");
     if (upstream.status >= 400 && upstream.status < 500) {

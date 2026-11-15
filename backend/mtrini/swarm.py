@@ -376,7 +376,7 @@ STAGGER = 2.0  # seconds between agent starts, so a burst of first requests does
 
 # Providers that answer one request at a time: their agents take turns instead of failing as "busy".
 # The free built-in model is one (its relay allows a single request in flight per install).
-ONE_AT_A_TIME = {"free"}
+ONE_AT_A_TIME = {"free", "compiwer-free"}
 _GATES: dict[tuple[str, int], asyncio.Semaphore] = {}
 
 

@@ -59,9 +59,35 @@ You need Node.js (already installed) and a free Cloudflare account.
    `backend/mtrini/providers/free.py` to that address (it's not secret), then build and
    release. Until then the free model stays hidden in the app.
 
+## Compiwer Free (a second relay, same code)
+
+`wrangler.compiwer.toml` runs this code again as `compiwer-free`: DeepSeek V4.1 Flash
+(`deepseek-v4.1-flash-free`) from [100milionseek](https://100milionseek.top), which is free and
+counts tokens (100 million per account per UTC day, 5 requests at once). Its prices are all 1.00,
+so its `*_USD` limits read as millions of tokens: 2M per install, 5M per IP, 90M for everyone a day.
+
+The key goes in the secret `UPSTREAM_KEYS`. With more than one key (commas or new lines between
+them), each request starts on the next key, and a key that is refused moves the request to the next.
+100milionseek allows **one account per person** and closes all of them if extra accounts are used to
+get around the daily allowance, so only add keys from different people who agreed to it.
+
+In PowerShell, in this folder:
+
+```
+npx wrangler deploy -c wrangler.compiwer.toml
+```
+
+```
+Get-Content $env:USERPROFILE\Documents\apikeys\apikey1.txt | npx wrangler secret put UPSTREAM_KEYS -c wrangler.compiwer.toml
+```
+
+Check `https://compiwer-free.<your-subdomain>.workers.dev/health` shows `"configured": true`.
+The app looks for it at `COMPIWER_RELAY_URL` in `backend/mtrini/providers/free.py`.
+
 ## Change limits or prices
 
-Edit `[vars]` in `wrangler.toml`, then run `npx wrangler deploy` again.
+Edit `[vars]` in `wrangler.toml` (or `wrangler.compiwer.toml`), then run `npx wrangler deploy`
+(with `-c wrangler.compiwer.toml` for Compiwer Free) again.
 To see live logs: `npx wrangler tail`.
 
 ## Test

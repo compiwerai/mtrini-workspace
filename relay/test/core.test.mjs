@@ -156,3 +156,48 @@ test("the phone app may call the relay from its own origin (CORS)", async () => 
   const h = await handle(new Request("https://relay.test/health"), {}, {});
   assert.equal(h.headers.get("access-control-allow-origin"), "*");
 });
+
+test("several keys: a refused key hands the request to the next one", async () => {
+  const used = [];
+  const env = { UPSTREAM_KEYS: "key-one,\nkey-two", UPGRADE_URL: "" };
+  const limiter = new Limiter(new MemStorage(), env);
+  const fetch = async (url, init) => {
+    const key = init.headers.authorization.slice(7);
+    used.push(key);
+    return key === "key-one"
+      ? new Response('{"error":{"message":"daily quota"}}', { status: 429 })
+      : Response.json({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+  };
+  const send = () => handle(new Request("https://relay.test/v1/chat/completions", {
+    method: "POST", headers: { "x-mtrini-install": USER, "cf-connecting-ip": "1.2.3.4" }, body: JSON.stringify(MSG),
+  }), env, { limiter, fetch });
+  for (let i = 0; i < 3; i++) assert.equal((await send()).status, 200);
+  assert.ok(used.includes("key-one"));
+  assert.equal(used.filter((k) => k === "key-two").length, 3);
+});
+
+test("all keys refused: the user gets 'busy', and nothing is charged", async () => {
+  const env = { UPSTREAM_KEYS: "a,b" };
+  const limiter = new Limiter(new MemStorage(), env);
+  const r = await handle(new Request("https://relay.test/v1/chat/completions", {
+    method: "POST", headers: { "x-mtrini-install": USER }, body: JSON.stringify(MSG),
+  }), env, { limiter, fetch: async () => new Response("{}", { status: 429 }) });
+  assert.equal(r.status, 429);
+  assert.equal((await limiter.usage(USER)).total, 0);
+});
+
+test("a relay with no upgrade link never mentions one", async () => {
+  const env = { UPSTREAM_KEYS: "k", UPGRADE_URL: "", USER_DAILY_USD: "0" };
+  const limiter = new Limiter(new MemStorage(), env);
+  const r = await handle(new Request("https://relay.test/v1/chat/completions", {
+    method: "POST", headers: { "x-mtrini-install": USER }, body: JSON.stringify(MSG),
+  }), env, { limiter, fetch: async () => Response.json({}) });
+  assert.equal(r.status, 429);
+  assert.doesNotMatch((await r.json()).error.message, /add your own|Heabsy/);
+});
+
+test("the Compiwer relay reports its own name and model", async () => {
+  const env = { SERVICE: "compiwer-free", MODEL: "deepseek-v4.1-flash-free", OWNER: "compiwer", UPSTREAM_KEYS: "k" };
+  const h = await (await handle(new Request("https://relay.test/health"), env, {})).json();
+  assert.deepEqual(h, { ok: true, service: "compiwer-free", model: "deepseek-v4.1-flash-free", configured: true });
+});

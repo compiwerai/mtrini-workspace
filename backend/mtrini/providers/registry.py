@@ -77,6 +77,8 @@ def build_provider(name: str, root: Path, settings: dict[str, Any] | None = None
         return _free.HeabsyProvider(api_key=get_secret(root, "mtrini-heabsy", "apiKey") or "")
     if name == "free":
         return _free.FreeProvider()
+    if name == "compiwer-free":
+        return _free.CompiwerFreeProvider()
     if name in _agent_cli.CLIS:  # your own Claude Code / Codex / Gemini CLI login
         return _agent_cli.AgentCLIProvider(name)
     if name.startswith("custom-"):  # one of your own OpenAI-compatible providers
@@ -126,6 +128,10 @@ PROVIDER_META = [
 # Shown first, only when the free-model relay is configured.
 FREE_META = {"id": "free", "label": _free.FREE_LABEL, "needsKey": False, "free": True,
              "defaultModel": _free.FREE_MODEL, "upgradeUrl": _free.HEABSY_UPGRADE_URL}
+# Compiwer Free: DeepSeek V4.1 Flash with no key, shown first when its relay is set.
+COMPIWER_META = {"id": "compiwer-free", "label": _free.COMPIWER_LABEL, "needsKey": False, "free": True,
+                 "defaultModel": _free.COMPIWER_MODEL,
+                 "hint": "DeepSeek V4.1 Flash, free from Compiwer AI with a daily limit. No key needed."}
 
 
 def supports_reasoning(provider: str, model: str) -> bool:
@@ -146,4 +152,5 @@ def provider_meta() -> list[dict[str, Any]]:
     custom = [{"id": c["id"], "label": c["label"], "needsKey": False, "custom": True, "baseUrl": c["baseUrl"],
                "fields": ["baseUrl", "model"], "hint": "Your own OpenAI-compatible provider; the key is optional"}
               for c in custom_providers()]
-    return ([FREE_META] if _free.free_relay_url() else []) + _agent_cli.meta() + PROVIDER_META + custom
+    built_in = ([COMPIWER_META] if _free.compiwer_relay_url() else []) + ([FREE_META] if _free.free_relay_url() else [])
+    return built_in + _agent_cli.meta() + PROVIDER_META + custom

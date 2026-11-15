@@ -14,7 +14,9 @@ DEFAULT_WINDOWS = {"anthropic": 1_000_000, "gemini": 1_000_000, "openai": 400_00
                    "mistral": 128_000, "groq": 128_000, "deepseek": 128_000, "xai": 256_000,
                    "heabsy": 256_000,
                    # The sponsored free model has a small daily budget: compact early to keep requests cheap.
-                   "free": 32_768}
+                   "free": 32_768,
+                   # Compiwer Free (DeepSeek V4.1 Flash): the relay accepts about 170K tokens a request.
+                   "compiwer-free": 131_072}
 SUMMARY_PREFIX = "[Earlier conversation, summarized to save context]\n"
 
 SUMMARY_PROMPT = (

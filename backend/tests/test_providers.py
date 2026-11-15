@@ -101,6 +101,35 @@ def test_free_model_listed_first_only_when_relay_is_set(client, monkeypatch):
     assert first["id"] == "free" and first["configured"] is True and first["defaultModel"] == "qwen38"
 
 
+def test_compiwer_free_goes_through_its_own_relay(monkeypatch):
+    monkeypatch.setenv("MTRINI_COMPIWER_FREE_URL", "https://compiwer.test")
+    seen = {}
+
+    def reply(request):
+        seen["url"], seen["install"] = str(request.url), request.headers.get("x-mtrini-install")
+        seen["model"], seen["auth"] = __import__("json").loads(request.content)["model"], request.headers.get("authorization")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(reply), **kw))
+    out = anyio.run(free.CompiwerFreeProvider().chat, "whatever", [ChatMessage(role="user", content="hi")])
+    assert out["content"] == "hi" and seen["url"] == "https://compiwer.test/v1/chat/completions"
+    assert seen["model"] == "deepseek-v4.1-flash-free" and len(seen["install"]) == 32
+    assert not (seen["auth"] or "").removeprefix("Bearer").strip()  # no key ever leaves the app
+    models = anyio.run(free.CompiwerFreeProvider().list_models)
+    assert [(m.id, m.label, m.provider) for m in models] == [("deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash", "compiwer-free")]
+
+
+def test_compiwer_free_listed_first_when_its_relay_is_set(client, monkeypatch):
+    assert "compiwer-free" not in {p["id"] for p in client.get("/api/providers").json()["providers"]}
+    monkeypatch.setenv("MTRINI_FREE_URL", "https://relay.test")
+    monkeypatch.setenv("MTRINI_COMPIWER_FREE_URL", "https://compiwer.test")
+    provs = client.get("/api/providers").json()["providers"]
+    assert [p["id"] for p in provs[:2]] == ["compiwer-free", "free"]
+    assert provs[0]["label"] == "Compiwer Free" and provs[0]["configured"] and provs[0]["free"]
+    assert provs[0]["defaultModel"] == "deepseek-v4.1-flash-free"
+
+
 def test_any_number_of_custom_providers(client):
     a = client.post("/api/providers/custom", json={"label": "OrcaRouter", "baseUrl": "https://api.orcarouter.ai/v1/",
                                                    "apiKey": "orca-key"}).json()

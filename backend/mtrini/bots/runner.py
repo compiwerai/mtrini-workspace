@@ -17,7 +17,7 @@ from .. import bots
 from ..config import provider_settings
 from . import routines
 
-ONE_AT_A_TIME = {"free"}  # the free model answers one request at a time per install
+ONE_AT_A_TIME = {"free", "compiwer-free"}  # the free models answer one request at a time per install
 RETRIES, RETRY_WAIT, MAX_WAIT = 3, 20, 15 * 60
 QUIET = ("no changes", "nothing new", "nothing to report", "no news", "rien de nouveau")
 TICK = 20  # seconds between scheduler checks
