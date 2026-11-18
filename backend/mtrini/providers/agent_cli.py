@@ -279,6 +279,24 @@ def parse_claude(ev: dict) -> tuple[list[dict], str | None]:
     return out, None
 
 
+def _codex_mcp_name(item: dict) -> str:
+    """A Codex MCP call, named like Claude Code names them: mcp__<server>__<tool>."""
+    return f"mcp__{item.get('server') or 'mcp'}__{item.get('tool') or 'tool'}"
+
+
+def _codex_mcp_result(item: dict) -> dict:
+    err = item.get("error")
+    failed = item.get("status") == "failed" or bool(err)
+    if failed:
+        msg = err.get("message") if isinstance(err, dict) else err
+        return {"ok": False, "output": None, "error": str(msg or "failed")[:20000]}
+    res = item.get("result") or {}
+    text = _text_of(res.get("content")) if isinstance(res, dict) else ""
+    if not text and isinstance(res, dict) and res.get("structured_content") is not None:
+        text = json.dumps(res["structured_content"], ensure_ascii=False, default=str)
+    return {"ok": True, "output": text[:20000], "error": None}
+
+
 def parse_codex(ev: dict) -> tuple[list[dict], str | None]:
     t, out = ev.get("type"), []
     if t == "thread.started":
@@ -287,6 +305,12 @@ def parse_codex(ev: dict) -> tuple[list[dict], str | None]:
     kind = item.get("type")
     if t == "item.started" and kind == "command_execution":
         out.append({"type": "tool_start", "tool": "run_command", "id": item.get("id"), "args": {"command": item.get("command")}})
+    elif t == "item.started" and kind == "mcp_tool_call":
+        args = item.get("arguments")
+        out.append({"type": "tool_start", "tool": _codex_mcp_name(item), "id": item.get("id"),
+                    "args": args if isinstance(args, dict) else ({} if args is None else {"arguments": args})})
+    elif t == "item.completed" and kind == "mcp_tool_call":
+        out.append({"type": "tool_result", "tool": _codex_mcp_name(item), "id": item.get("id"), **_codex_mcp_result(item)})
     elif t == "item.completed":
         if kind == "agent_message" and item.get("text"):
             out.append({"type": "assistant_delta", "delta": item["text"]})

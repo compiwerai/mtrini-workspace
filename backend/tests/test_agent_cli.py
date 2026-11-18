@@ -129,6 +129,26 @@ def test_codex_turn(tmp_path, monkeypatch):
     assert argv[-3:] == ["resume", "th-1", "-"]
 
 
+def test_codex_mcp_calls_show_as_steps():
+    """Codex runs the MCP servers in your ~/.codex/config.toml; each call shows in the thread like Claude Code's."""
+    started = {"type": "item.started", "item": {"id": "m1", "type": "mcp_tool_call", "server": "github",
+                                                "tool": "search_issues", "arguments": {"q": "bug"}, "status": "in_progress"}}
+    done = {"type": "item.completed", "item": {**started["item"], "status": "completed", "error": None,
+                                               "result": {"content": [{"type": "text", "text": "3 issues"}], "structured_content": None}}}
+    failed = {"type": "item.completed", "item": {"id": "m2", "type": "mcp_tool_call", "server": "db", "tool": "query",
+                                                 "arguments": None, "result": None, "error": {"message": "server not running"},
+                                                 "status": "failed"}}
+    structured = {"type": "item.completed", "item": {"id": "m3", "type": "mcp_tool_call", "server": "s", "tool": "t",
+                                                     "status": "completed", "result": {"content": [], "structured_content": {"n": 2}}}}
+    assert agent_cli.parse_codex(started)[0] == [{"type": "tool_start", "tool": "mcp__github__search_issues", "id": "m1",
+                                                 "args": {"q": "bug"}}]
+    assert agent_cli.parse_codex(done)[0] == [{"type": "tool_result", "tool": "mcp__github__search_issues", "id": "m1",
+                                              "ok": True, "output": "3 issues", "error": None}]
+    res = agent_cli.parse_codex(failed)[0][0]
+    assert res["tool"] == "mcp__db__query" and res["ok"] is False and res["error"] == "server not running"
+    assert agent_cli.parse_codex(structured)[0][0]["output"] == '{"n": 2}'
+
+
 def test_gemini_partial_text_is_one_message(tmp_path, monkeypatch):
     _fake_cli(tmp_path, monkeypatch, "gemini", GEMINI_LINES)
     root = tmp_path / "proj"
