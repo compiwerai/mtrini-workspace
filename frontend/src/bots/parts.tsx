@@ -18,6 +18,8 @@ const PATHS: Record<string, string> = {
   chevron: 'M9 6l6 6-6 6',
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 4.500V12l3 2',
+  share: 'M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6',
+  download: 'M12 4v11M8 11l4 4 4-4M5 19h14',
   folder: 'M3 6.500a1 1 0 0 1 1-1h5l2 2.500h9a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6.500z',
 };
 
@@ -85,7 +87,7 @@ export function Rich({ text, className }: { text: string; className?: string }) 
   return <div className={`rich ${className || ''}`} dangerouslySetInnerHTML={{ __html: toHtml(text) }} />;
 }
 
-export function Dialog({ title, intro, onClose, children }: { title: string; intro?: string; onClose: () => void; children: React.ReactNode }) {
+export function Dialog({ title, intro, onClose, children, className }: { title: string; intro?: string; onClose: () => void; children: React.ReactNode; className?: string }) {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -93,7 +95,7 @@ export function Dialog({ title, intro, onClose, children }: { title: string; int
   }, [onClose]);
   return (
     <div className="scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`dialog ${className || ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {intro ? <p>{intro}</p> : <p />}
         {children}

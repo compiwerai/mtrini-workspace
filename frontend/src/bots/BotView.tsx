@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ago, api, until, type Bot, type BotEvent, type Message, type Provider, type Routine } from './api';
+import { ago, api, until, type Bot, type BotEvent, type FirstRun, type Message, type Provider, type Routine } from './api';
 import { MASCOT_NAMES } from './mascots';
 import { Avatar, Dialog, Icon, Rich } from './parts';
+import { CardCanvas, cardData, ShareCard, ShareRecipe } from './Share';
 
 type Tab = 'chat' | 'routines' | 'memory' | 'files' | 'settings';
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const STARTERS = ['What can you do for me?', 'Search the web for today\'s AI news and give me 5 links', 'Remember that I prefer short answers'];
 
 type Subscribe = (fn: (ev: BotEvent) => void) => () => void;
+const shareable = (m: Message) => m.role === 'assistant' && !m.error && !m.stopped && !m.approval && m.content.trim().length > 30;
 
-export function BotView({ bot, subscribe, hasBrowser, onChanged, onDeleted, notify }: {
+export function BotView({ bot, subscribe, hasBrowser, onChanged, onDeleted, notify, firstRun, onFirstRun }: {
   bot: Bot; subscribe: Subscribe; hasBrowser: boolean; onChanged: () => void; onDeleted: () => void;
-  notify: (text: string, bad?: boolean) => void;
+  notify: (text: string, bad?: boolean) => void; firstRun?: FirstRun | null; onFirstRun?: (f: FirstRun) => void;
 }) {
   const [tab, setTab] = useState<Tab>('chat');
   useEffect(() => { setTab('chat'); }, [bot.id]);
@@ -46,7 +48,7 @@ export function BotView({ bot, subscribe, hasBrowser, onChanged, onDeleted, noti
         ))}
       </nav>
       <div className="pane">
-        {tab === 'chat' ? <Chat bot={bot} subscribe={subscribe} notify={notify} /> : null}
+        {tab === 'chat' ? <Chat bot={bot} subscribe={subscribe} notify={notify} firstRun={firstRun?.bot === bot.id ? firstRun : null} onFirstRun={onFirstRun} /> : null}
         {tab === 'routines' ? <Routines bot={bot} notify={notify} onChanged={onChanged} /> : null}
         {tab === 'memory' ? <Memory bot={bot} notify={notify} /> : null}
         {tab === 'files' ? <Files bot={bot} /> : null}
@@ -56,8 +58,17 @@ export function BotView({ bot, subscribe, hasBrowser, onChanged, onDeleted, noti
   );
 }
 
-function Chat({ bot, subscribe, notify }: { bot: Bot; subscribe: Subscribe; notify: (t: string, bad?: boolean) => void }) {
+function Chat({ bot, subscribe, notify, firstRun, onFirstRun }: {
+  bot: Bot; subscribe: Subscribe; notify: (t: string, bad?: boolean) => void; firstRun?: FirstRun | null; onFirstRun?: (f: FirstRun) => void;
+}) {
   const [msgs, setMsgs] = useState<Message[]>([]);
+  const [sharing, setSharing] = useState<Message | null>(null);
+  const first = firstRun && firstRun.state !== 'seen' && firstRun.state !== 'none' ? firstRun : null;
+  const firstReply = first?.state === 'done' ? first.message : undefined;
+  const firstAsk = firstReply ? [...msgs].reverse().find((m) => m.role === 'user' && m.ts <= firstReply.ts) : undefined;
+  const took = firstReply && firstAsk ? Math.max(1, Math.round(firstReply.ts - firstAsk.ts)) : 0;
+  const firstDone = () => api.firstRunSeen().then((f) => onFirstRun?.(f)).catch(() => {});
+  const firstAgain = () => api.startFirstRun().then((f) => onFirstRun?.(f)).catch((e) => notify(e.message, true));
   const [text, setText] = useState('');
   const [live, setLive] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -83,6 +94,13 @@ function Chat({ bot, subscribe, notify }: { bot: Bot; subscribe: Subscribe; noti
   return (
     <div className="chat">
       <div className="msgs">
+        {first ? (
+          <div className={`firstrun ${first.state}`} role="status">
+            {first.state === 'done' ? <><b>{took ? `Done in ${took} ${took === 1 ? 'second' : 'seconds'}.` : 'Done.'}</b> On the free built-in model: no key, no setup.</>
+              : first.state === 'failed' ? <><b>The free model could not answer just now.</b> <button className="linkbtn" onClick={firstAgain}>Try again</button></>
+              : <><b>{bot.name}'s first job.</b> It runs on the free built-in model: no key, no setup.</>}
+          </div>
+        ) : null}
         {msgs.length === 0 && !working ? (
           <div className="hello">
             <p>{bot.name} keeps its notes in its own folder, remembers what you tell it, and asks before it acts for you. Try:</p>
@@ -103,13 +121,24 @@ function Chat({ bot, subscribe, notify }: { bot: Bot; subscribe: Subscribe; noti
               </details>
             ) : null}
             <Rich text={m.content} className={`text ${m.error ? 'bad' : ''}`} />
-            <div className="when">{bot.name} · {ago(m.ts)}</div>
+            <div className="when">{bot.name} · {ago(m.ts)}{shareable(m) ? <> · <button className="linkbtn" onClick={() => setSharing(m)}>Share as card</button></> : null}</div>
+            {firstReply?.id === m.id ? (
+              <div className="firstcard">
+                <CardCanvas data={cardData(bot, m.content).data} />
+                <div className="acts">
+                  <button className="btn primary tall" onClick={() => setSharing(m)}><Icon name="share" />Share this card</button>
+                  <button className="btn ghost tall" onClick={firstDone}>Done</button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ))}
         {working ? <div className="live" role="status">{bot.state.label || 'Working'}</div> : null}
         {bot.state.status === 'waiting' ? <div className="live waiting" role="status">Waiting for your answer in the inbox</div> : null}
         <div ref={end} />
       </div>
+      {sharing ? <ShareCard bot={bot} text={sharing.content} title={typeof sharing.routine === 'string' ? sharing.routine : ''} notify={notify}
+        onClose={() => setSharing(null)} /> : null}
       <div className="composer">
         <div className="box">
           <textarea rows={1} value={text} placeholder={bot.paused ? `${bot.name} is paused` : `Message ${bot.name}`} disabled={bot.paused}
@@ -241,6 +270,7 @@ function Files({ bot }: { bot: Bot }) {
 function Settings({ bot, notify, onChanged, onDeleted }: { bot: Bot; notify: (t: string, bad?: boolean) => void; onChanged: () => void; onDeleted: () => void }) {
   const [form, setForm] = useState({ name: bot.name, role: bot.role, instructions: bot.instructions, provider: bot.provider, model: bot.model, color: bot.color, mascot: bot.mascot });
   const [confirm, setConfirm] = useState(false);
+  const [recipe, setRecipe] = useState(false);
   useEffect(() => { setForm({ name: bot.name, role: bot.role, instructions: bot.instructions, provider: bot.provider, model: bot.model, color: bot.color, mascot: bot.mascot }); }, [bot.id]);
   const dirty = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k] !== (bot as any)[k]);
   const save = async () => { try { await api.update(bot.id, form); notify('Saved'); onChanged(); } catch (e: any) { notify(e.message, true); } };
@@ -261,9 +291,11 @@ function Settings({ bot, notify, onChanged, onDeleted }: { bot: Bot; notify: (t:
       <div className="bar">
         <button className="btn primary tall" disabled={!dirty} onClick={save}>Save changes</button>
         <span style={{ flex: 1 }} />
+        <button className="btn" onClick={() => setRecipe(true)}><Icon name="share" />Share recipe</button>
         <button className="btn" onClick={fresh}>New conversation</button>
         <button className="btn danger" onClick={() => setConfirm(true)}><Icon name="trash" />Delete bot</button>
       </div>
+      {recipe ? <ShareRecipe bot={bot} notify={notify} onClose={() => setRecipe(false)} /> : null}
       {confirm ? (
         <Dialog title={`Delete ${bot.name}?`} intro="This removes the bot, its folder and files, its memory, its routines and its inbox. It can't be undone." onClose={() => setConfirm(false)}>
           <div className="foot"><button className="btn ghost" onClick={() => setConfirm(false)}>Keep it</button><button className="btn danger" onClick={remove}>Delete {bot.name}</button></div>

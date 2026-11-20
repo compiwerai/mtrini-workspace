@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ago, api, listen, type Background, type Bot, type BotEvent, type InboxItem, type Telegram, type Template } from './api';
+import { ago, api, listen, type Background, type Bot, type BotEvent, type FirstRun, type InboxItem, type Telegram, type Template } from './api';
 import { BotView, MascotPicker, ModelPicker } from './BotView';
 import { Avatar, Dialog, Icon, Rich } from './parts';
+import { ImportRecipe, ShareCard } from './Share';
 
 type View = { kind: 'inbox' } | { kind: 'bot'; id: string };
 const waiting = (i: InboxItem) => i.kind === 'approval' && i.state === 'pending';
@@ -19,6 +20,9 @@ export default function BotsApp() {
   const subs = useRef(new Set<(ev: BotEvent) => void>());
   const subscribe = useCallback((fn: (ev: BotEvent) => void) => { subs.current.add(fn); return () => { subs.current.delete(fn); }; }, []);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [firstRun, setFirstRun] = useState<FirstRun | null>(null);
+  const firstBot = useRef('');
   const [telegram, setTelegram] = useState<Telegram | null>(null);
   const [showTelegram, setShowTelegram] = useState(false);
   const [background, setBackground] = useState<Background | null>(null);
@@ -38,8 +42,16 @@ export default function BotsApp() {
     loadBots(); loadInbox();
     api.telegram().then(setTelegram).catch(() => {});
     api.background().then(setBackground).catch(() => {});
+    // First launch: a starter bot does a real job right away, on the free model, and you watch it happen.
+    api.firstRun().then(async (f) => {
+      if (f.state === 'none' || f.state === 'seen' || !f.bot) return;
+      firstBot.current = f.bot;
+      setView({ kind: 'bot', id: f.bot });
+      setFirstRun(f.state === 'pending' ? await api.startFirstRun() : f);
+    }).catch(() => {});
     const close = listen((ev) => {
       subs.current.forEach((fn) => fn(ev));
+      if ((ev.type === 'message' || ev.type === 'state') && ev.bot === firstBot.current) api.firstRun().then(setFirstRun).catch(() => {});
       if (ev.type === 'bots' || ev.type === 'hello') loadBots();
       if (ev.type === 'state') setBots((all) => all.map((b) => (b.id === ev.bot ? { ...b, state: { status: ev.status, label: ev.label, since: ev.since } } : b)));
       if (ev.type === 'inbox') { loadInbox(); loadBots(); }
@@ -86,15 +98,19 @@ export default function BotsApp() {
 
       <main className="main">
         {view.kind === 'inbox' || !current ? (
-          <Inbox items={items} bots={bots} loaded={loaded} onNew={() => setCreating(true)} reload={() => { loadInbox(); loadBots(); }}
+          <Inbox items={items} bots={bots} loaded={loaded} onNew={() => setCreating(true)} onImport={() => setImporting(true)} reload={() => { loadInbox(); loadBots(); }}
             openBot={(id) => setView({ kind: 'bot', id })} notify={notify} />
         ) : (
           <BotView bot={current} subscribe={subscribe} hasBrowser={hasBrowser} onChanged={loadBots} notify={notify}
+            firstRun={firstRun} onFirstRun={setFirstRun}
             onDeleted={() => { setView({ kind: 'inbox' }); loadBots(); loadInbox(); notify('Bot deleted'); }} />
         )}
       </main>
 
-      {creating ? <NewBot onClose={() => setCreating(false)} onCreated={(b) => { setCreating(false); loadBots().then(() => setView({ kind: 'bot', id: b.id })); }} /> : null}
+      {creating ? <NewBot onClose={() => setCreating(false)} onImport={() => { setCreating(false); setImporting(true); }}
+        onCreated={(b) => { setCreating(false); loadBots().then(() => setView({ kind: 'bot', id: b.id })); }} /> : null}
+      {importing ? <ImportRecipe onClose={() => setImporting(false)}
+        onImported={(b) => { setImporting(false); notify(`${b.name} is ready. Its routines are off until you switch them on.`); loadBots().then(() => setView({ kind: 'bot', id: b.id })); }} /> : null}
       {showBackground ? <BackgroundDialog status={background} onChange={setBackground} onClose={() => setShowBackground(false)} notify={notify} /> : null}
       {showTelegram ? <TelegramDialog status={telegram} bots={bots} onChange={setTelegram} onClose={() => setShowTelegram(false)} /> : null}
       {toast ? <div className={`toast ${toast.bad ? 'bad' : ''}`} role="status">{toast.text}</div> : null}
@@ -102,11 +118,12 @@ export default function BotsApp() {
   );
 }
 
-function Inbox({ items, bots, loaded, onNew, reload, openBot, notify }: {
-  items: InboxItem[]; bots: Bot[]; loaded: boolean; onNew: () => void; reload: () => void; openBot: (id: string) => void;
+function Inbox({ items, bots, loaded, onNew, onImport, reload, openBot, notify }: {
+  items: InboxItem[]; bots: Bot[]; loaded: boolean; onNew: () => void; onImport: () => void; reload: () => void; openBot: (id: string) => void;
   notify: (t: string, bad?: boolean) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<InboxItem | null>(null);
   const need = items.filter(waiting);
   const rest = items.filter((i) => !waiting(i));
   const open = items.find((i) => i.id === openId) || null;
@@ -149,7 +166,10 @@ function Inbox({ items, bots, loaded, onNew, reload, openBot, notify }: {
               <li><b>Approvals</b>Sending, buying or deleting waits here for your yes.</li>
               <li><b>Yours</b>Runs on this computer. Files and memory are plain text you can open.</li>
             </ul>
-            <button className="btn primary tall" onClick={onNew}><Icon name="plus" />New bot</button>
+            <div className="acts" style={{ marginTop: 0 }}>
+              <button className="btn primary tall" onClick={onNew}><Icon name="plus" />New bot</button>
+              <button className="btn ghost tall" onClick={onImport}>Add from a recipe</button>
+            </div>
           </div>
         </div>
       </>
@@ -194,6 +214,7 @@ function Inbox({ items, bots, loaded, onNew, reload, openBot, notify }: {
                 </div>
               ) : <Rich text={open.body} />}
               <div className="acts">
+                {open.kind !== 'approval' && open.kind !== 'error' ? <button className="btn" onClick={() => setSharing(open)}><Icon name="share" />Share as card</button> : null}
                 <button className="btn" onClick={() => openBot(open.bot)}>Open {open.botName}</button>
                 {!waiting(open) && open.read ? <button className="btn ghost" onClick={() => { api.markRead(open.bot, open.id, false).then(reload); setOpenId(null); }}>Mark unread</button> : null}
               </div>
@@ -201,11 +222,16 @@ function Inbox({ items, bots, loaded, onNew, reload, openBot, notify }: {
           ) : items.length ? <p className="blank">Pick a report to read it.</p> : null}
         </div>
       </div>
+      {sharing ? (() => {
+        const b = bots.find((x) => x.id === sharing.bot);
+        const face = { name: sharing.botName, role: b?.role || '', color: who(sharing).color, mascot: who(sharing).mascot || 'camel', provider: b?.provider || '' };
+        return <ShareCard bot={face} text={sharing.body} title={sharing.title} notify={notify} onClose={() => setSharing(null)} />;
+      })() : null}
     </>
   );
 }
 
-function NewBot({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Bot) => void }) {
+function NewBot({ onClose, onCreated, onImport }: { onClose: () => void; onCreated: (b: Bot) => void; onImport: () => void }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [tpl, setTpl] = useState('chief');
   const [form, setForm] = useState({ name: '', role: '', instructions: '', provider: 'free', model: '', color: '#5ad1e6', mascot: 'camel' });
@@ -240,7 +266,8 @@ function NewBot({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Bo
         <MascotPicker mascot={form.mascot} color={form.color} onChange={(mascot, color) => setForm({ ...form, mascot, color })} />
       </div>
       {err ? <div className="err" role="alert">{err}</div> : null}
-      <div className="foot"><button className="btn ghost tall" onClick={onClose}>Cancel</button><button className="btn primary tall" disabled={busy || !form.name.trim()} onClick={create}>Create bot</button></div>
+      <div className="foot"><button className="btn ghost tall" style={{ marginRight: 'auto' }} onClick={onImport}>From a recipe</button>
+        <button className="btn ghost tall" onClick={onClose}>Cancel</button><button className="btn primary tall" disabled={busy || !form.name.trim()} onClick={create}>Create bot</button></div>
     </Dialog>
   );
 }

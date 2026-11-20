@@ -24,6 +24,12 @@ export type Template = { key: string; name: string; role: string; instructions: 
 export type Telegram = { connected: boolean; paired: boolean; pairCode: string; defaultBot: string; username: string; running: boolean; error: string };
 export type Background = { keepRunning: boolean; autostart: boolean; installed: boolean; desktop: boolean; hasWork: boolean; staysOn: boolean };
 export type Provider = { id: string; label?: string; name?: string; configured: boolean; kind?: string; free?: boolean; agentCli?: boolean };
+export type FirstRun = { state: 'none' | 'pending' | 'running' | 'done' | 'failed' | 'seen'; bot?: string; botName?: string; provider?: string; message?: Message };
+export type Recipe = {
+  mtriniBot: 1; name: string; role: string; instructions: string; mascot: string; color: string;
+  routines: { title: string; prompt: string; kind: Routine['kind']; time?: string; minutes?: number; days?: number[] }[];
+};
+export type Saved = { path: string; folder: string };
 export type BotEvent =
   | { type: 'hello' } | { type: 'bots' }
   | { type: 'state'; bot: string; status: BotState['status']; label: string; since: number }
@@ -78,6 +84,16 @@ export const api = {
   telegramConnect: (token: string) => post<Telegram>('/api/bots/telegram', { token }),
   telegramDefault: (defaultBot: string) => post<Telegram>('/api/bots/telegram', { defaultBot }),
   telegramDisconnect: () => call<Telegram>('/api/bots/telegram', { method: 'DELETE' }),
+  firstRun: () => call<FirstRun>('/api/bots/first-run'),
+  startFirstRun: () => post<FirstRun>('/api/bots/first-run/start'),
+  firstRunSeen: () => post<FirstRun>('/api/bots/first-run/seen'),
+  saveCard: (png: string, name: string) => post<Saved>('/api/bots/cards', { png, name }),
+  reveal: (path: string) => post<{ ok: boolean }>('/api/bots/reveal', { path }),
+  open: (url: string) => post<{ ok: boolean }>('/api/bots/open', { url }),
+  recipe: (id: string) => call<{ recipe: Recipe; link: string }>(`/api/bots/${id}/recipe`),
+  saveRecipe: (id: string) => post<Saved>(`/api/bots/${id}/recipe/save`),
+  previewRecipe: (text: string) => post<{ recipe: Recipe }>('/api/bots/recipes/preview', { text }),
+  importRecipe: (text: string) => post<Bot>('/api/bots/recipes/import', { text }),
   providers: () => call<{ providers: Provider[] }>('/api/providers'),
   models: (provider: string) => call<{ models: { id: string; label: string }[] }>(`/api/models?provider=${encodeURIComponent(provider)}`),
 };

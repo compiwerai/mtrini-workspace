@@ -58,7 +58,8 @@ def persona(bot: bots.Bot) -> str:
 
 def _now_note(source: str, routine: dict | None) -> str:
     now = dt.datetime.now()
-    where = {"chat": "the user, in the app", "telegram": "the user, on Telegram"}.get(source, source)
+    where = {"chat": "the user, in the app", "telegram": "the user, on Telegram",
+             "first-run": "Mtrini Bots itself: the user just opened the app for the first time and is watching"}.get(source, source)
     if routine:
         where = f"your routine \"{routine.get('title', '')}\" (nobody is watching: report to the inbox)"
     return f"Now: {now.strftime('%A %d %B %Y, %H:%M')} (local time). This message is from {where}."
@@ -253,14 +254,24 @@ async def _drive(bot: bots.Bot, text: str, source: str, routine: dict | None, re
         it = bots.post(bot.id, "briefing", str(routine.get("title", "Routine")), final, routine=routine.get("id"),
                        read=quiet, quiet=quiet)
         publish({"type": "inbox", "item": it, "botName": bot.name})
+    elif source == "first-run":  # the first report in a new user's inbox
+        it = bots.post(bot.id, "result", headline(final, f"{bot.name}'s first job"), final)
+        publish({"type": "inbox", "item": it, "botName": bot.name})
     _set(bot.id, "idle")
 
 
-async def run_turn(bid: str, text: str, source: str = "chat", routine: dict | None = None) -> None:
+def headline(text: str, fallback: str) -> str:
+    """A short first line, if the reply starts with one (markdown marks dropped)."""
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    first = first.lstrip("#>*-• ").replace("**", "").strip()
+    return first[:100] if first and len(first) <= 100 and not first.endswith(":") else fallback
+
+
+async def run_turn(bid: str, text: str, source: str = "chat", routine: dict | None = None, shown: str = "") -> None:
     bot = bots.get(bid)
     async with _lock(bid):
         _expire_approvals(bid)
-        shown = f"Routine: {routine.get('title', '')}" if routine else text
+        shown = f"Routine: {routine.get('title', '')}" if routine else shown or text
         msg = bots.say(bid, "user", shown, source=source, routine=bool(routine))
         publish({"type": "message", "bot": bid, "message": msg, "source": source})
         _set(bid, "queued", "Waiting for its turn")
@@ -331,8 +342,8 @@ def _spawn(bid: str, coro: Awaitable[None]) -> asyncio.Task:
     return task
 
 
-def start_turn(bid: str, text: str, source: str = "chat", routine: dict | None = None) -> asyncio.Task:
-    return _spawn(bid, run_turn(bid, text, source, routine))
+def start_turn(bid: str, text: str, source: str = "chat", routine: dict | None = None, shown: str = "") -> asyncio.Task:
+    return _spawn(bid, run_turn(bid, text, source, routine, shown))
 
 
 def busy(bid: str) -> bool:

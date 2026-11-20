@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from .. import bots, memory
 from .. import browser as br
-from . import background, routines, runner, telegram
+from . import background, firstrun, routines, runner, share, telegram
 
 router = APIRouter(prefix="/api/bots")
 
@@ -202,6 +202,84 @@ async def background_quit():
     await br.close_all()
     asyncio.get_running_loop().call_later(0.4, os._exit, 0)
     return {"ok": True}
+
+
+# ---- first run, cards, recipes ----
+@router.get("/first-run")
+def first_run():
+    return firstrun.status()
+
+
+@router.post("/first-run/start")
+async def first_run_start():  # async: the turn is started on the server's event loop
+    return firstrun.start()
+
+
+@router.post("/first-run/seen")
+def first_run_seen():
+    return firstrun.seen()
+
+
+class CardBody(BaseModel):
+    png: str
+    name: str = ""
+
+
+@router.post("/cards")
+def card_save(body: CardBody):
+    try:
+        p = share.save_card(body.png, body.name)
+    except bots.BotError as e:
+        raise _fail(e) from None
+    return {"path": str(p), "folder": str(p.parent)}
+
+
+class PathBody(BaseModel):
+    path: str
+
+
+@router.post("/reveal")
+def reveal(body: PathBody):
+    try:
+        share.reveal(body.path)
+    except bots.BotError as e:
+        raise _fail(e) from None
+    return {"ok": True}
+
+
+class UrlBody(BaseModel):
+    url: str
+
+
+@router.post("/open")
+def open_link(body: UrlBody):
+    try:
+        share.open_url(body.url)
+    except bots.BotError as e:
+        raise _fail(e) from None
+    return {"ok": True}
+
+
+class RecipeBody(BaseModel):
+    text: str
+
+
+@router.post("/recipes/preview")
+def recipe_preview(body: RecipeBody):
+    try:
+        return {"recipe": share.parse(body.text)}
+    except bots.BotError as e:
+        raise _fail(e) from None
+
+
+@router.post("/recipes/import")
+def recipe_import(body: RecipeBody):
+    try:
+        bot = share.import_recipe(body.text)
+    except bots.BotError as e:
+        raise _fail(e) from None
+    runner.publish({"type": "bots"})
+    return _view(bot)
 
 
 # ---- one bot ----
@@ -400,3 +478,17 @@ async def browser_hide(bid: str):
     except Exception:  # noqa: BLE001
         pass
     return br.status(bots.files_dir(bid))
+
+
+@router.get("/{bid}/recipe")
+def recipe(bid: str):
+    _bot(bid)
+    r = share.recipe(bid)
+    return {"recipe": r, "link": share.link(r)}
+
+
+@router.post("/{bid}/recipe/save")
+def recipe_save(bid: str):
+    _bot(bid)
+    p = share.save_recipe(bid)
+    return {"path": str(p), "folder": str(p.parent)}

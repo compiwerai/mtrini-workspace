@@ -264,7 +264,7 @@ def seed_starters() -> list[Bot]:
     what to follow. This runs once (a marker file remembers), so a starter you delete stays deleted, and a
     bot you already made with the same name is left alone.
     """
-    from . import routines
+    from . import firstrun, routines
 
     marker = home() / "starters.json"
     if marker.exists():
@@ -282,6 +282,8 @@ def seed_starters() -> list[Bot]:
             for r in t["routines"]:
                 routines.upsert(bot.id, {**r, "enabled": False})
             made.append(bot)
+            if key == firstrun.TEMPLATE:
+                firstrun.arm(bot.id)  # the first window runs this one, so a new user sees a result in seconds
         _write(marker, {"seeded": [b.id for b in made], "at": time.time()})
     return made
 

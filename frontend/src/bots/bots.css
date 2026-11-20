@@ -240,6 +240,30 @@ ol.howto code { font: 13px var(--mono); background: var(--raised); padding: 1px 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: #ffffff; border-radius: 8px; padding: 8px 16px; font-size: 13px; z-index: 30; max-width: 80vw; box-shadow: var(--shadow-l); }
 .toast.bad { background: var(--bad); }
 
+/* ---- sharing: a result as a card, a bot as a recipe ---- */
+.dialog.wide { max-width: 720px; }
+.dialog .foot { flex-wrap: wrap; }
+.card { margin: 0; }
+.card canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 12px; background: #f4f4f5; box-shadow: var(--shadow-l), 0 0 0 1px var(--line); }
+.dialog .note { margin-top: 12px; }
+.note.saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note.saved .mono { flex: 1; min-width: 0; word-break: break-all; }
+.linkbtn { border: 0; background: transparent; padding: 0; color: var(--text2); font: inherit; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.linkbtn:hover { color: var(--text); text-decoration-color: var(--text); }
+.firstrun { max-width: 672px; margin: 0 24px 24px; padding: 12px 16px; border-radius: 8px; background: var(--raised); color: var(--text2); font-size: 13px; }
+.firstrun b { color: var(--text); font-weight: 500; }
+.firstrun.done { background: #eaf7fa; }
+.firstrun.failed b { color: var(--bad); }
+.firstcard { margin-top: 16px; max-width: 560px; }
+.firstcard .acts, .intro .acts { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.filepick { position: relative; overflow: hidden; }
+.filepick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.recipe { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+.recipe b { display: block; font-weight: 500; }
+.recipe small { font: 12px/16px var(--mono); color: var(--muted); }
+pre.instr { margin: 0; font: 13px/20px var(--mono); color: var(--text); white-space: pre-wrap; word-break: break-word; background: var(--raised); border-radius: 8px; padding: 12px 16px; max-height: 180px; overflow: auto; }
+.plainlist { margin: 0; padding-left: 20px; color: var(--text2); }
+
 @media (max-width: 960px) {
   .maillist { width: 100%; border-right: 0; }
   .mail.reading .maillist { display: none; }
