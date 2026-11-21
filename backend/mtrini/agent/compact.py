@@ -15,8 +15,8 @@ DEFAULT_WINDOWS = {"anthropic": 1_000_000, "gemini": 1_000_000, "openai": 400_00
                    "heabsy": 256_000,
                    # The sponsored free model has a small daily budget: compact early to keep requests cheap.
                    "free": 32_768,
-                   # Compiwer Free (DeepSeek V4.1 Flash): the relay accepts about 170K tokens a request.
-                   "compiwer-free": 131_072}
+                   # Compiwer Free (Grok 4.7): 500K context window, 128K max output per request.
+                   "compiwer-free": 500_000}
 SUMMARY_PREFIX = "[Earlier conversation, summarized to save context]\n"
 
 SUMMARY_PROMPT = (

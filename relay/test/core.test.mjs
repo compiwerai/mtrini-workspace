@@ -197,7 +197,7 @@ test("a relay with no upgrade link never mentions one", async () => {
 });
 
 test("the Compiwer relay reports its own name and model", async () => {
-  const env = { SERVICE: "compiwer-free", MODEL: "deepseek-v4.1-flash-free", OWNER: "compiwer", UPSTREAM_KEYS: "k" };
+  const env = { SERVICE: "compiwer-free", MODEL: "grok-4.7", OWNER: "compiwer", UPSTREAM_KEYS: "k" };
   const h = await (await handle(new Request("https://relay.test/health"), env, {})).json();
-  assert.deepEqual(h, { ok: true, service: "compiwer-free", model: "deepseek-v4.1-flash-free", configured: true });
+  assert.deepEqual(h, { ok: true, service: "compiwer-free", model: "grok-4.7", configured: true });
 });

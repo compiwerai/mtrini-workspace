@@ -1,7 +1,7 @@
 """Heabsy (bring your own key) and the built-in free models, both through Compiwer relays.
 
 - "free": Qwen3.8 27B, sponsored by Heabsy (relay mtrini-free).
-- "compiwer-free": Compiwer Free, DeepSeek V4.1 Flash from 100milionseek (relay compiwer-free).
+- "compiwer-free": Compiwer Free, Grok 4.7 from 100miliongrok (relay compiwer-free).
 
 Neither needs a key: requests go to a Compiwer relay, which holds the upstream key(s) and
 applies daily limits. The app sends an anonymous install id (a random number made on first
@@ -31,7 +31,7 @@ FREE_LABEL = "Free · Heabsy"
 
 
 COMPIWER_RELAY_URL = "https://compiwer-free.roblox-event-bot-worker.workers.dev"
-COMPIWER_MODEL = "deepseek-v4.1-flash-free"
+COMPIWER_MODEL = "grok-4.7"
 COMPIWER_LABEL = "Compiwer Free"
 
 
@@ -118,9 +118,9 @@ class FreeProvider(OpenAICompatibleProvider):
 
 
 class CompiwerFreeProvider(FreeProvider):
-    """Compiwer Free: DeepSeek V4.1 Flash, free from Compiwer AI through its own relay (upstream: 100milionseek)."""
+    """Compiwer Free: Grok 4.7, free from Compiwer AI through its own relay (upstream: 100miliongrok)."""
     name = "compiwer-free"
-    MODEL, MODEL_LABEL, CONTEXT = COMPIWER_MODEL, "DeepSeek V4.1 Flash", 131072
+    MODEL, MODEL_LABEL, CONTEXT = COMPIWER_MODEL, "Grok 4.7", 500000
     UPGRADE = ""
 
     @staticmethod

@@ -119,10 +119,10 @@ def test_compiwer_free_goes_through_its_own_relay(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(reply), **kw))
     out = anyio.run(free.CompiwerFreeProvider().chat, "whatever", [ChatMessage(role="user", content="hi")])
     assert out["content"] == "hi" and seen["url"] == "https://compiwer.test/v1/chat/completions"
-    assert seen["model"] == "deepseek-v4.1-flash-free" and len(seen["install"]) == 32
+    assert seen["model"] == "grok-4.7" and len(seen["install"]) == 32
     assert not (seen["auth"] or "").removeprefix("Bearer").strip()  # no key ever leaves the app
     models = anyio.run(free.CompiwerFreeProvider().list_models)
-    assert [(m.id, m.label, m.provider) for m in models] == [("deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash", "compiwer-free")]
+    assert [(m.id, m.label, m.provider) for m in models] == [("grok-4.7", "Grok 4.7", "compiwer-free")]
 
 
 def test_compiwer_free_listed_first_when_its_relay_is_set(client, monkeypatch):
@@ -132,7 +132,7 @@ def test_compiwer_free_listed_first_when_its_relay_is_set(client, monkeypatch):
     provs = client.get("/api/providers").json()["providers"]
     assert [p["id"] for p in provs[:2]] == ["compiwer-free", "free"]
     assert provs[0]["label"] == "Compiwer Free" and provs[0]["configured"] and provs[0]["free"]
-    assert provs[0]["defaultModel"] == "deepseek-v4.1-flash-free"
+    assert provs[0]["defaultModel"] == "grok-4.7"
 
 
 def test_any_number_of_custom_providers(client):

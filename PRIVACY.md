@@ -24,10 +24,10 @@ Mtrini Workspace is local-first:
   IP address and your spend for the current UTC day; those counters are deleted when the day ends.
   The relay does not store prompts or answers. Heabsy's own terms apply to what it receives.
   Pick any other provider and nothing goes through the relay.
-- **Compiwer Free** (DeepSeek V4.1 Flash) works the same way through a second Compiwer relay, which
-  forwards your requests to [100milionseek](https://100milionseek.top), a free OpenAI-compatible
-  service not affiliated with DeepSeek. The same anonymous install id, hashed IP and daily counters
-  apply. 100milionseek says it doesn't store prompts or answers; its own terms apply to what it receives.
+- **Compiwer Free** (Grok 4.7) works the same way through a second Compiwer relay, which
+  forwards your requests to [100miliongrok](https://100miliongrok.top), a free OpenAI-compatible
+  service not affiliated with xAI. The same anonymous install id, hashed IP and daily counters
+  apply. 100miliongrok's own terms apply to what it receives.
 - **Mtrini accounts are optional.** If you sign in (Settings → Account) with Discord or
   GitHub, Mtrini Cloud stores your name, email, picture, which sign-ins you linked, and a list of your
   signed-in devices with their names and last-seen times. It receives nothing from your projects.

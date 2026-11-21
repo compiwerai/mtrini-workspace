@@ -61,15 +61,15 @@ You need Node.js (already installed) and a free Cloudflare account.
 
 ## Compiwer Free (a second relay, same code)
 
-`wrangler.compiwer.toml` runs this code again as `compiwer-free`: DeepSeek V4.1 Flash
-(`deepseek-v4.1-flash-free`) from [100milionseek](https://100milionseek.top), which is free and
-counts tokens (100 million per account per UTC day, 5 requests at once). Its prices are all 1.00,
-so its `*_USD` limits read as millions of tokens: 2M per install, 5M per IP, 90M for everyone a day.
+`wrangler.compiwer.toml` runs this code again as `compiwer-free`: Grok 4.7 (`grok-4.7`)
+from [100miliongrok](https://100miliongrok.top), a free OpenAI-compatible service that gives
+signed-up accounts free tokens a day. Its prices are all 1.00, so its `*_USD` limits read as
+millions of tokens: 10M per install, 25M per IP, 500M for everyone a day (about 3.5B a week,
+well under the key's 20B weekly allowance).
 
 The key goes in the secret `UPSTREAM_KEYS`. With more than one key (commas or new lines between
 them), each request starts on the next key, and a key that is refused moves the request to the next.
-100milionseek allows **one account per person** and closes all of them if extra accounts are used to
-get around the daily allowance, so only add keys from different people who agreed to it.
+Only add keys from people who agreed to share them.
 
 In PowerShell, in this folder:
 

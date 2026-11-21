@@ -3,7 +3,7 @@
 // imports, so the same logic runs in the Worker and in Node tests.
 //
 // One copy of this code runs per free model: "mtrini-free" (Qwen3.8 27B, sponsored by Heabsy,
-// wrangler.toml) and "compiwer-free" (DeepSeek V4.1 Flash, wrangler.compiwer.toml). Only the
+// wrangler.toml) and "compiwer-free" (Grok 4.7, wrangler.compiwer.toml). Only the
 // settings differ. Keys come from the secret UPSTREAM_KEYS (one or more, separated by commas or
 // new lines) or, for the first relay, HEABSY_KEY.
 //

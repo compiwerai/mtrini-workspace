@@ -128,10 +128,10 @@ PROVIDER_META = [
 # Shown first, only when the free-model relay is configured.
 FREE_META = {"id": "free", "label": _free.FREE_LABEL, "needsKey": False, "free": True,
              "defaultModel": _free.FREE_MODEL, "upgradeUrl": _free.HEABSY_UPGRADE_URL}
-# Compiwer Free: DeepSeek V4.1 Flash with no key, shown first when its relay is set.
+# Compiwer Free: Grok 4.7 with no key, shown first when its relay is set.
 COMPIWER_META = {"id": "compiwer-free", "label": _free.COMPIWER_LABEL, "needsKey": False, "free": True,
                  "defaultModel": _free.COMPIWER_MODEL,
-                 "hint": "DeepSeek V4.1 Flash, free from Compiwer AI with a daily limit. No key needed."}
+                 "hint": "Grok 4.7, free from Compiwer AI with a daily limit. No key needed."}
 
 
 def supports_reasoning(provider: str, model: str) -> bool:

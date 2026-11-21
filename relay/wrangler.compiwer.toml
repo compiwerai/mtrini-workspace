@@ -1,4 +1,4 @@
-# Compiwer Free: DeepSeek V4.1 Flash through 100milionseek (free, OpenAI-compatible), for Mtrini Workspace.
+# Compiwer Free: Grok 4.7 through 100miliongrok (free, OpenAI-compatible), for Mtrini Workspace.
 # Same code as the Heabsy relay (wrangler.toml); only these settings differ.
 # Deploy: npx wrangler deploy -c wrangler.compiwer.toml
 # Key(s): put them in the secret UPSTREAM_KEYS, commas or new lines between them (see README.md).
@@ -16,17 +16,17 @@ new_sqlite_classes = ["LimiterObject"]
 
 [vars]
 SERVICE = "compiwer-free"
-UPSTREAM_URL = "https://100milionseek.top/v1"
-MODEL = "deepseek-v4.1-flash-free"
+UPSTREAM_URL = "https://100miliongrok.top/v1"
+MODEL = "grok-4.7"
 OWNER = "compiwer"
-# The upstream is free and counts tokens (100 million per account per UTC day), so every token is priced
-# at 1.00 per million: the *_USD limits below then read as millions of tokens.
+# The upstream is free but token-counted, so every token is priced at 1.00 per million:
+# the *_USD limits below then read as millions of tokens.
 PRICE_INPUT_PER_M = "1.00"
 PRICE_CACHED_PER_M = "1.00"
 PRICE_OUTPUT_PER_M = "1.00"
-USER_DAILY_USD = "2"       # 2M tokens per install per day
-IP_DAILY_USD = "5"         # 5M tokens per IP address per day
-GLOBAL_DAILY_USD = "90"    # 90M tokens per day for everyone, under the 100M a key allows
+USER_DAILY_USD = "10"      # 10M tokens per install per day
+IP_DAILY_USD = "25"        # 25M tokens per IP address per day
+GLOBAL_DAILY_USD = "500"   # 500M tokens per day for everyone (~3.5B a week, well under the 20B weekly allowance)
 USER_RPM = "12"
 GLOBAL_RPM = "120"
 USER_CONCURRENCY = "2"

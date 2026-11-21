@@ -451,7 +451,7 @@ export default function ThreadView({ messages, busy, status, pending, files, bra
             )}
             {prov === 'compiwer-free' && (
               <p className="hint freenote">
-                You're on Compiwer Free: DeepSeek V4.1 Flash, free from Compiwer AI through <a href="https://100milionseek.top" target="_blank" rel="noreferrer">100milionseek</a>.
+                You're on Compiwer Free: Grok 4.7, free from Compiwer AI through <a href="https://100miliongrok.top" target="_blank" rel="noreferrer">100miliongrok</a>.
                 It has a daily limit; connect any provider in <a onClick={onGoSettings}>Settings</a> for more.
               </p>
             )}
