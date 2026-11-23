@@ -2,6 +2,7 @@
 
 - "free": Qwen3.8 27B, sponsored by Heabsy (relay mtrini-free).
 - "compiwer-free": Compiwer Free, Grok 4.7 from 100miliongrok (relay compiwer-free).
+- "compiwer-deepseek": Compiwer Free, DeepSeek V4.1 Flash from 100milionseek (relay compiwer-deepseek).
 
 Neither needs a key: requests go to a Compiwer relay, which holds the upstream key(s) and
 applies daily limits. The app sends an anonymous install id (a random number made on first
@@ -34,6 +35,10 @@ COMPIWER_RELAY_URL = "https://compiwer-free.roblox-event-bot-worker.workers.dev"
 COMPIWER_MODEL = "grok-4.7"
 COMPIWER_LABEL = "Compiwer Free"
 
+COMPIWER_DEEPSEEK_RELAY_URL = "https://compiwer-deepseek.roblox-event-bot-worker.workers.dev"
+COMPIWER_DEEPSEEK_MODEL = "deepseek-v4.1-flash-free"
+COMPIWER_DEEPSEEK_LABEL = "Compiwer Free · DeepSeek"
+
 
 def free_relay_url() -> str:
     return (os.environ.get("MTRINI_FREE_URL") or FREE_RELAY_URL).rstrip("/")
@@ -41,6 +46,10 @@ def free_relay_url() -> str:
 
 def compiwer_relay_url() -> str:
     return (os.environ.get("MTRINI_COMPIWER_FREE_URL") or COMPIWER_RELAY_URL).rstrip("/")
+
+
+def compiwer_deepseek_relay_url() -> str:
+    return (os.environ.get("MTRINI_COMPIWER_DEEPSEEK_URL") or COMPIWER_DEEPSEEK_RELAY_URL).rstrip("/")
 
 
 def install_id() -> str:
@@ -126,6 +135,17 @@ class CompiwerFreeProvider(FreeProvider):
     @staticmethod
     def relay() -> str:
         return compiwer_relay_url()
+
+
+class CompiwerDeepSeekProvider(FreeProvider):
+    """Compiwer Free: DeepSeek V4.1 Flash, through its own relay (upstream: 100milionseek)."""
+    name = "compiwer-deepseek"
+    MODEL, MODEL_LABEL, CONTEXT = COMPIWER_DEEPSEEK_MODEL, "DeepSeek V4.1 Flash", 131072
+    UPGRADE = ""
+
+    @staticmethod
+    def relay() -> str:
+        return compiwer_deepseek_relay_url()
 
 
 def _relay_message(r: httpx.Response, upgrade: str = "") -> str:

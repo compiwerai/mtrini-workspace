@@ -135,6 +135,43 @@ def test_compiwer_free_listed_first_when_its_relay_is_set(client, monkeypatch):
     assert provs[0]["defaultModel"] == "grok-4.7"
 
 
+def test_compiwer_deepseek_goes_through_its_own_relay(monkeypatch):
+    import anyio
+    import httpx
+
+    from mtrini.providers import ChatMessage, free
+
+    monkeypatch.setenv("MTRINI_COMPIWER_DEEPSEEK_URL", "https://compiwer-deepseek.test")
+    seen = {}
+
+    def reply(request):
+        seen["url"] = str(request.url)
+        seen["model"] = __import__("json").loads(request.content)["model"]
+        seen["install"] = request.headers.get("x-mtrini-install")
+        seen["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(reply), **kw))
+    out = anyio.run(free.CompiwerDeepSeekProvider().chat, "whatever", [ChatMessage(role="user", content="hi")])
+    assert out["content"] == "hi"
+    assert seen["url"] == "https://compiwer-deepseek.test/v1/chat/completions"
+    assert seen["model"] == "deepseek-v4.1-flash-free" and len(seen["install"]) == 32
+    assert not (seen["auth"] or "").removeprefix("Bearer").strip()  # no key ever leaves the app
+    models = anyio.run(free.CompiwerDeepSeekProvider().list_models)
+    assert [(m.id, m.label, m.provider, m.contextLength) for m in models] == [
+        ("deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash", "compiwer-deepseek", 131072)]
+
+
+def test_both_compiwer_free_models_are_listed_when_their_relays_are_set(client, monkeypatch):
+    monkeypatch.setenv("MTRINI_COMPIWER_FREE_URL", "https://compiwer.test")
+    monkeypatch.setenv("MTRINI_COMPIWER_DEEPSEEK_URL", "https://compiwer-deepseek.test")
+    provs = client.get("/api/providers").json()["providers"]
+    assert [p["id"] for p in provs[:2]] == ["compiwer-free", "compiwer-deepseek"]
+    assert [p["defaultModel"] for p in provs[:2]] == ["grok-4.7", "deepseek-v4.1-flash-free"]
+    assert all(p["free"] and p["configured"] and not p["needsKey"] for p in provs[:2])
+
+
 def test_any_number_of_custom_providers(client):
     a = client.post("/api/providers/custom", json={"label": "OrcaRouter", "baseUrl": "https://api.orcarouter.ai/v1/",
                                                    "apiKey": "orca-key"}).json()

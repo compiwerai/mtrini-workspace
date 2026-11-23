@@ -84,10 +84,29 @@ Get-Content $env:USERPROFILE\Documents\apikeys\apikey1.txt | npx wrangler secret
 Check `https://compiwer-free.<your-subdomain>.workers.dev/health` shows `"configured": true`.
 The app looks for it at `COMPIWER_RELAY_URL` in `backend/mtrini/providers/free.py`.
 
+## Compiwer Free · DeepSeek (a third relay, same code)
+
+`wrangler.compiwer-deepseek.toml` runs the code again as `compiwer-deepseek`: DeepSeek V4.1 Flash
+(`deepseek-v4.1-flash-free`) from [100milionseek](https://100milionseek.top). The key gets 100M
+tokens a day, so with all prices at 1.00 the limits read as millions of tokens: 2M per install,
+5M per IP and 90M for everyone per day. This is Compiwer Free's second model; Grok 4.7 stays
+available through the relay above.
+
+Deploy and set its key (paste the key when prompted — don't put it in the repo):
+
+```
+npx wrangler deploy -c wrangler.compiwer-deepseek.toml
+npx wrangler secret put UPSTREAM_KEYS -c wrangler.compiwer-deepseek.toml
+```
+
+Check `https://compiwer-deepseek.<your-subdomain>.workers.dev/health` shows `"configured": true`.
+Set that address as `COMPIWER_DEEPSEEK_RELAY_URL` in `backend/mtrini/providers/free.py` before
+building the app (or override it locally with `MTRINI_COMPIWER_DEEPSEEK_URL`).
+
 ## Change limits or prices
 
-Edit `[vars]` in `wrangler.toml` (or `wrangler.compiwer.toml`), then run `npx wrangler deploy`
-(with `-c wrangler.compiwer.toml` for Compiwer Free) again.
+Edit `[vars]` in `wrangler.toml` (or `wrangler.compiwer.toml`, `wrangler.compiwer-deepseek.toml`),
+then run `npx wrangler deploy` with the matching `-c` flag again.
 To see live logs: `npx wrangler tail`.
 
 ## Test

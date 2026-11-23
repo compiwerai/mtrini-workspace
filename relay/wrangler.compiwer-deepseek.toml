@@ -1,0 +1,37 @@
+# Compiwer Free (second model): DeepSeek V4.1 Flash through 100milionseek (free, OpenAI-compatible).
+# Same code as the other relays (wrangler.toml, wrangler.compiwer.toml); only these settings differ.
+# Deploy: npx wrangler deploy -c wrangler.compiwer-deepseek.toml
+# Key(s): put them in the secret UPSTREAM_KEYS, commas or new lines between them (see README.md).
+name = "compiwer-deepseek"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "LIMITER"
+class_name = "LimiterObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LimiterObject"]
+
+[vars]
+SERVICE = "compiwer-deepseek"
+UPSTREAM_URL = "https://100milionseek.top/v1"
+MODEL = "deepseek-v4.1-flash-free"
+OWNER = "compiwer"
+# The upstream is free and counts tokens (100 million per account per UTC day), so every token is priced
+# at 1.00 per million: the *_USD limits below then read as millions of tokens.
+PRICE_INPUT_PER_M = "1.00"
+PRICE_CACHED_PER_M = "1.00"
+PRICE_OUTPUT_PER_M = "1.00"
+USER_DAILY_USD = "2"       # 2M tokens per install per day
+IP_DAILY_USD = "5"         # 5M tokens per IP address per day
+GLOBAL_DAILY_USD = "90"    # 90M tokens per day for everyone, under the 100M a key allows
+USER_RPM = "12"
+GLOBAL_RPM = "120"
+USER_CONCURRENCY = "2"
+GLOBAL_CONCURRENCY = "5"   # the upstream allows 5 requests at once per account
+MAX_TOKENS = "16384"
+MAX_BODY_BYTES = "600000"
+UPGRADE_URL = ""           # no "add your own key" line: Compiwer Free has no paid upgrade
+UPGRADE_NAME = ""

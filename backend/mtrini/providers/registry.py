@@ -79,6 +79,8 @@ def build_provider(name: str, root: Path, settings: dict[str, Any] | None = None
         return _free.FreeProvider()
     if name == "compiwer-free":
         return _free.CompiwerFreeProvider()
+    if name == "compiwer-deepseek":
+        return _free.CompiwerDeepSeekProvider()
     if name in _agent_cli.CLIS:  # your own Claude Code / Codex / Gemini CLI login
         return _agent_cli.AgentCLIProvider(name)
     if name.startswith("custom-"):  # one of your own OpenAI-compatible providers
@@ -132,6 +134,11 @@ FREE_META = {"id": "free", "label": _free.FREE_LABEL, "needsKey": False, "free":
 COMPIWER_META = {"id": "compiwer-free", "label": _free.COMPIWER_LABEL, "needsKey": False, "free": True,
                  "defaultModel": _free.COMPIWER_MODEL,
                  "hint": "Grok 4.7, free from Compiwer AI with a daily limit. No key needed."}
+# Compiwer Free's second model: DeepSeek V4.1 Flash, also free and with its own relay.
+COMPIWER_DEEPSEEK_META = {"id": "compiwer-deepseek", "label": _free.COMPIWER_DEEPSEEK_LABEL,
+                          "needsKey": False, "free": True,
+                          "defaultModel": _free.COMPIWER_DEEPSEEK_MODEL,
+                          "hint": "DeepSeek V4.1 Flash, free from Compiwer AI with a daily limit. No key needed."}
 
 
 def supports_reasoning(provider: str, model: str) -> bool:
@@ -152,5 +159,7 @@ def provider_meta() -> list[dict[str, Any]]:
     custom = [{"id": c["id"], "label": c["label"], "needsKey": False, "custom": True, "baseUrl": c["baseUrl"],
                "fields": ["baseUrl", "model"], "hint": "Your own OpenAI-compatible provider; the key is optional"}
               for c in custom_providers()]
-    built_in = ([COMPIWER_META] if _free.compiwer_relay_url() else []) + ([FREE_META] if _free.free_relay_url() else [])
+    built_in = ([COMPIWER_META] if _free.compiwer_relay_url() else []) \
+        + ([COMPIWER_DEEPSEEK_META] if _free.compiwer_deepseek_relay_url() else []) \
+        + ([FREE_META] if _free.free_relay_url() else [])
     return built_in + _agent_cli.meta() + PROVIDER_META + custom

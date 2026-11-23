@@ -28,6 +28,10 @@ Mtrini Workspace is local-first:
   forwards your requests to [100miliongrok](https://100miliongrok.top), a free OpenAI-compatible
   service not affiliated with xAI. The same anonymous install id, hashed IP and daily counters
   apply. 100miliongrok's own terms apply to what it receives.
+- **Compiwer Free · DeepSeek** (DeepSeek V4.1 Flash) uses a third relay with the same handling;
+  it forwards to [100milionseek](https://100milionseek.top), a free OpenAI-compatible service not
+  affiliated with DeepSeek. The same install id, hashed IP and daily counters apply, and
+  100milionseek's own terms apply to what it receives.
 - **Mtrini accounts are optional.** If you sign in (Settings → Account) with Discord or
   GitHub, Mtrini Cloud stores your name, email, picture, which sign-ins you linked, and a list of your
   signed-in devices with their names and last-seen times. It receives nothing from your projects.
