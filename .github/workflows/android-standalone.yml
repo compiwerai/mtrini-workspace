@@ -5,7 +5,7 @@ name: android-standalone
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags: ['standalone-*']
 
 permissions:
   contents: write
