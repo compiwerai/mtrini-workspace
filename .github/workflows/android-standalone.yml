@@ -20,6 +20,13 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
 
+      - name: Generate the Capacitor web assets
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
       - name: Put the standalone app into the Android assets
         run: |
           cp frontend/standalone/index.html frontend/standalone/logo.png frontend/android/app/src/main/assets/public/
