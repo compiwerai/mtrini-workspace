@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<title>Mtrini · Standalone</title>
+<style>
+  :root {
+    --bg:#f6f8fa; --panel:#ffffff; --panel2:#f0f3f6; --line:#dde3e9; --ink:#18212b;
+    --muted:#657180; --cyan:#0e7490; --cyan-soft:#e0f5f8; --user:#0e7490; --user-ink:#ffffff;
+    --shadow:0 6px 22px rgba(20,40,60,.08); --radius:14px;
+  }
+  html[data-theme="dark"] {
+    --bg:#0d1117; --panel:#151c24; --panel2:#1b242e; --line:#28333f; --ink:#e7eef5;
+    --muted:#93a4b5; --cyan:#4fd1e6; --cyan-soft:#12333b; --user:#155e71; --user-ink:#eaffff;
+    --shadow:0 6px 22px rgba(0,0,0,.25);
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  button,textarea,select { font:inherit; }
+  button { cursor:pointer; }
+  #app { display:flex; flex-direction:column; height:100%; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+  header { display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:800; letter-spacing:-.02em; }
+  .brand img { width:28px; height:28px; border-radius:8px; }
+  header .grow { flex:1; }
+  .icon-btn { width:38px; height:38px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); color:var(--ink); font-size:18px; display:grid; place-items:center; }
+  .icon-btn:active { transform:scale(.94); }
+  select { border:1px solid var(--line); background:var(--panel2); color:var(--ink); border-radius:10px; padding:8px; max-width:46vw; }
+  main { flex:1; overflow:auto; padding:16px 12px 24px; scroll-behavior:smooth; }
+  .empty { max-width:520px; margin:12vh auto; text-align:center; color:var(--muted); }
+  .empty h1 { color:var(--ink); font-size:26px; margin:0 0 8px; }
+  .msg { max-width:92%; margin:0 0 14px; padding:12px 14px; border-radius:var(--radius); white-space:pre-wrap; overflow-wrap:anywhere; box-shadow:var(--shadow); }
+  .msg.user { margin-left:auto; background:var(--user); color:var(--user-ink); border-bottom-right-radius:4px; }
+  .msg.assistant { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:4px; }
+  .msg .who { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin-bottom:6px; }
+  .msg pre { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; font-size:13px; }
+  .msg code { font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; }
+  .typing::after { content:"▋"; animation:blink 1s steps(2) infinite; color:var(--cyan); }
+  @keyframes blink { 50% { opacity:0; } }
+  footer { padding:10px 12px; background:var(--panel); border-top:1px solid var(--line); display:flex; gap:8px; align-items:flex-end; }
+  textarea { flex:1; resize:none; max-height:120px; min-height:44px; border:1px solid var(--line); border-radius:12px; background:var(--panel2); color:var(--ink); padding:11px 12px; }
+  .send { border:0; border-radius:12px; background:var(--cyan); color:#fff; font-weight:700; padding:11px 16px; min-width:64px; }
+  .send:disabled { opacity:.45; }
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; z-index:20; }
+  .sheet.open { display:block; }
+  .sheet .box { position:absolute; right:0; top:0; bottom:0; width:min(380px,92vw); background:var(--panel); padding:18px; overflow:auto; box-shadow:var(--shadow); }
+  .sheet h2 { margin:0 0 12px; font-size:20px; }
+  .sheet label { display:block; color:var(--muted); font-size:12px; margin:14px 0 5px; text-transform:uppercase; letter-spacing:.1em; }
+  .sheet textarea,.sheet select { width:100%; border:1px solid var(--line); border-radius:10px; background:var(--panel2); color:var(--ink); padding:10px; }
+  .sheet button { width:100%; margin-top:10px; padding:11px; border:1px solid var(--line); border-radius:10px; background:var(--panel2); color:var(--ink); font-weight:600; }
+  .sheet button.primary { background:var(--cyan); color:#fff; border-color:transparent; }
+  .sessions { display:flex; flex-direction:column; gap:8px; }
+  .session { text-align:left; padding:11px; border:1px solid var(--line); border-radius:10px; background:var(--panel2); color:var(--ink); }
+  .session.active { border-color:var(--cyan); background:var(--cyan-soft); }
+  .session small { display:block; color:var(--muted); }
+  .toast { position:fixed; left:50%; bottom:84px; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:9px 14px; border-radius:999px; font-size:13px; opacity:0; transition:opacity .2s; z-index:30; pointer-events:none; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><img src="logo.png" alt="" onerror="this.style.display='none'"><span>Mtrini</span></div>
+    <div class="grow"></div>
+    <select id="model" aria-label="Model">
+      <option value="A">Grok 4.7</option>
+      <option value="B">DeepSeek V4.1 Flash</option>
+    </select>
+    <button class="icon-btn" id="sessionsBtn" title="Sessions">☰</button>
+    <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+  </header>
+  <main id="main">
+    <div class="empty" id="empty">
+      <h1>What should we build?</h1>
+      <p>Your sessions live on this device. No PC, no account and no API key needed — both free Compiwer models work straight from the app.</p>
+    </div>
+    <div id="thread"></div>
+  </main>
+  <footer>
+    <textarea id="input" rows="1" placeholder="Message…"></textarea>
+    <button class="send" id="send">Send</button>
+  </footer>
+</div>
+
+<div class="sheet" id="sessionSheet">
+  <div class="box">
+    <h2>Sessions</h2>
+    <button class="primary" id="newSession">+ New session</button>
+    <div class="sessions" id="sessionList" style="margin-top:14px"></div>
+    <button id="closeSessions">Close</button>
+  </div>
+</div>
+
+<div class="sheet" id="settingsSheet">
+  <div class="box">
+    <h2>Settings</h2>
+    <label>System prompt</label>
+    <textarea id="system" rows="4" placeholder="You are a helpful assistant."></textarea>
+    <label>Temperature</label>
+    <select id="temp"><option>0</option><option selected>0.3</option><option>0.7</option><option>1</option></select>
+    <label>Theme</label>
+    <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select>
+    <button id="export">Export sessions</button>
+    <button id="importBtn">Import sessions</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+    <button id="clear">Delete all sessions</button>
+    <button id="closeSettings">Close</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const MODELS = {
+  A: { name:"Grok 4.7", url:"https://compiwer-free.roblox-event-bot-worker.workers.dev/v1/chat/completions" },
+  B: { name:"DeepSeek V4.1 Flash", url:"https://compiwer-deepseek.roblox-event-bot-worker.workers.dev/v1/chat/completions" },
+};
+const $ = id => document.getElementById(id);
+const KEY = 'mtrini.standalone.sessions';
+const CFG = 'mtrini.standalone.config';
+let install = localStorage.getItem('mtrini.standalone.install');
+if (!/^[0-9a-f]{32}$/.test(install||'')) {
+  install = crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'') :
+    Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  localStorage.setItem('mtrini.standalone.install', install);
+}
+let sessions = [], activeId = null, cfg = { system:'', temp:'0.3', theme:'light' }, busy = false, abort = null;
+try { sessions = JSON.parse(localStorage.getItem(KEY)||'[]'); } catch {}
+try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG)||'{}')); } catch {}
+if (!sessions.length) sessions.push(newSession(false));
+activeId = sessions[0].id;
+
+function newSession(select=true) {
+  return { id: 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    title:'New session', model:'A', messages:[], updated:Date.now() };
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(sessions)); localStorage.setItem(CFG, JSON.stringify(cfg)); }
+function active() { return sessions.find(s=>s.id===activeId) || sessions[0]; }
+function esc(s) { return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function fmt(text) {
+  let s = esc(text);
+  s = s.replace(/```([\s\S]*?)```/g, (_,code)=>'<pre><code>'+code.replace(/^\n/,'').trimEnd()+'</code></pre>');
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  return s;
+}
+function toast(t) { $('toast').textContent=t; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'), 2200); }
+function applyTheme() { document.documentElement.setAttribute('data-theme', cfg.theme); }
+
+function render() {
+  const s = active();
+  $('empty').style.display = s.messages.length ? 'none' : 'block';
+  $('thread').innerHTML = s.messages.map(m =>
+    '<div class="msg '+m.role+'">'+(m.role==='assistant'?'<span class="who">'+esc(MODELS[m.model||s.model].name)+'</span>':'')+fmt(m.content)+'</div>').join('');
+  $('model').value = s.model;
+  $('main').scrollTop = $('main').scrollHeight;
+  renderSessions();
+}
+function renderSessions() {
+  $('sessionList').innerHTML = sessions.map(s =>
+    '<button class="session '+(s.id===activeId?'active':'')+'" data-id="'+s.id+'">'+esc(s.title)+
+    '<small>'+new Date(s.updated).toLocaleString()+' · '+s.messages.length+' messages</small></button>').join('');
+}
+$('sessionList').onclick = e => {
+  const b = e.target.closest('.session'); if(!b) return;
+  activeId = b.dataset.id; render(); $('sessionSheet').classList.remove('open');
+};
+$('newSession').onclick = () => { const s=newSession(); sessions.unshift(s); activeId=s.id; save(); render(); $('sessionSheet').classList.remove('open'); $('input').focus(); };
+$('sessionsBtn').onclick = () => { renderSessions(); $('sessionSheet').classList.add('open'); };
+$('closeSessions').onclick = () => $('sessionSheet').classList.remove('open');
+$('settingsBtn').onclick = () => { $('system').value=cfg.system; $('temp').value=cfg.temp; $('theme').value=cfg.theme; $('settingsSheet').classList.add('open'); };
+$('closeSettings').onclick = () => { cfg.system=$('system').value; cfg.temp=$('temp').value; cfg.theme=$('theme').value; applyTheme(); save(); $('settingsSheet').classList.remove('open'); };
+$('model').onchange = e => { active().model=e.target.value; save(); };
+$('input').addEventListener('input', () => { $('input').style.height='auto'; $('input').style.height=Math.min(120,$('input').scrollHeight)+'px'; });
+$('input').addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } });
+$('send').onclick = send;
+
+function setBusy(v) { busy=v; $('send').disabled=v; $('send').textContent=v?'Stop':'Send'; }
+$('send').onclick = () => { if(busy){ abort && abort.abort(); return; } send(); };
+
+async function send() {
+  const text = $('input').value.trim(); if(!text) return;
+  const s = active();
+  if (!s.messages.length) s.title = text.slice(0,32) + (text.length>32?'…':'');
+  s.messages.push({ role:'user', content:text });
+  s.messages.push({ role:'assistant', content:'', model:s.model });
+  s.updated=Date.now(); $('input').value=''; $('input').style.height='auto'; save(); render(); setBusy(true);
+  abort = new AbortController();
+  const node = $('thread').lastElementChild;
+  node.classList.add('typing');
+  const msgs = [];
+  if (cfg.system) msgs.push({role:'system',content:cfg.system});
+  s.messages.slice(0,-1).forEach(m => msgs.push({role:m.role, content:m.content}));
+  try {
+    const res = await fetch(MODELS[s.model].url, {
+      method:'POST', signal:abort.signal,
+      headers:{ 'Content-Type':'application/json', 'x-mtrini-install':install },
+      body: JSON.stringify({ messages:msgs, model:s.model==='A'?'grok-4.7':'deepseek-v4.1-flash-free',
+        max_tokens:1600, temperature:Number(cfg.temp||0.3), stream:true })
+    });
+    if (!res.ok || !res.body) throw new Error('HTTP '+res.status);
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf='', full='';
+    while (true) {
+      const {done,value} = await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        const t=line.trim(); if(!t.startsWith('data:')) continue;
+        const raw=t.slice(5).trim(); if(raw==='[DONE]') continue;
+        try { const d=JSON.parse(raw); const delta=d.choices?.[0]?.delta?.content; if(delta){ full+=delta; s.messages[s.messages.length-1].content=full; node.innerHTML='<span class="who">'+esc(MODELS[s.model].name)+'</span>'+fmt(full); $('main').scrollTop=$('main').scrollHeight; } } catch {}
+      }
+    }
+    if (!full) s.messages[s.messages.length-1].content='(no answer)';
+  } catch(e) {
+    s.messages[s.messages.length-1].content = e.name==='AbortError' ? 'Stopped.' : ('Could not reach this model: '+(e.message||e));
+  }
+  node.classList.remove('typing'); s.updated=Date.now(); save(); render(); setBusy(false);
+}
+
+$('export').onclick = () => {
+  const blob = new Blob([JSON.stringify({sessions,cfg},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mtrini-sessions.json'; a.click();
+  toast('Sessions exported');
+};
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async e => {
+  const f=e.target.files[0]; if(!f) return;
+  try { const d=JSON.parse(await f.text()); if(!Array.isArray(d.sessions)) throw new Error('bad file');
+    sessions=d.sessions; if(d.cfg) Object.assign(cfg,d.cfg); activeId=sessions[0]?.id; applyTheme(); save(); render(); toast('Imported '+sessions.length+' sessions');
+  } catch(err) { toast('Import failed'); }
+  e.target.value='';
+};
+$('clear').onclick = () => { if(!confirm('Delete all sessions?')) return; sessions=[newSession()]; activeId=sessions[0].id; save(); render(); toast('Sessions cleared'); };
+
+applyTheme();
+render();
+</script>
+</body>
+</html>
